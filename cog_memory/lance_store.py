@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import lancedb
+import pyarrow as pa
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
@@ -39,14 +40,14 @@ class LanceStore:
         self,
         db_path: str | Path = "./data/lancedb",
         table_name: str = "nodes",
-        embedding_dim: int = 1536,  # Default for OpenAI text-embedding-3-small
+        embedding_dim: int = 768,  # Default for Nomic (FREE API, high quality)
     ) -> None:
         """Initialize the LanceDB store.
 
         Args:
             db_path: Path to LanceDB database directory
             table_name: Name of the table to use/create
-            embedding_dim: Dimension of embedding vectors
+            embedding_dim: Dimension of embedding vectors (384 for local, 1536 for OpenAI)
         """
         self.db_path = Path(db_path)
         self.db_path.mkdir(parents=True, exist_ok=True)
@@ -62,21 +63,17 @@ class LanceStore:
         try:
             return self.db.open_table(self.table_name)
         except Exception:
-            # Table doesn't exist, create it
-            schema = [
-                {"name": "id", "data_type": "string"},
-                {"name": "text", "data_type": "string"},
-                {"name": "role", "data_type": "string"},
-                {"name": "confidence", "data_type": "float"},
-                {"name": "activation", "data_type": "float"},
-                {"name": "neighbors", "data_type": "string"},
-                {"name": "metadata", "data_type": "string"},
-                {
-                    "name": "vector",
-                    "data_type": "float",
-                    "vec_dim": self.embedding_dim,
-                },
-            ]
+            # Table doesn't exist, create it with proper PyArrow schema
+            schema = pa.schema([
+                pa.field("id", pa.string()),
+                pa.field("text", pa.string()),
+                pa.field("role", pa.string()),
+                pa.field("confidence", pa.float64()),
+                pa.field("activation", pa.float64()),
+                pa.field("neighbors", pa.string()),
+                pa.field("metadata", pa.string()),
+                pa.field("vector", pa.list_(pa.float32(), list_size=self.embedding_dim)),
+            ])
             return self.db.create_table(self.table_name, schema=schema)
 
     def add_node(

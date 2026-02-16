@@ -1,13 +1,18 @@
 """LLM-based commitment extraction from text.
 
 Extracts commitments with meta-roles from paragraphs using LLM.
+
+Supports multiple providers:
+- OpenAI: GPT-4o, GPT-4o-mini
+- Groq: Llama 3.1 8B (FREE), Llama 3.1 70B (FREE)
+- Hugging Face: Serverless inference (free tier)
 """
 
 from __future__ import annotations
 
 import json
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from dotenv import load_dotenv
 
@@ -19,34 +24,84 @@ if TYPE_CHECKING:
 
 load_dotenv()
 
+Provider = Literal["openai", "groq", "huggingface"]
+
 
 class LLMExtractor:
     """Extract commitments from text using LLM.
 
     Parses paragraphs into structured commitments with meta-role assignments.
+
+    Supports multiple inference providers:
+    - **Groq** (recommended for testing): FREE, fastest inference
+      Get API key: https://console.groq.com/
+      Models: llama-3.1-8b-instant, llama-3.1-70b-versatile
+    - **OpenAI**: GPT-4o, GPT-4o-mini (requires paid API)
+    - **Hugging Face**: Serverless API with free tier
     """
+
+    # Default models per provider
+    DEFAULT_MODELS = {
+        "groq": "llama-3.1-8b-instant",
+        "openai": "gpt-4o",
+        "huggingface": "meta-llama/Llama-3.1-8B-Instruct",
+    }
+
+    # Base URLs for each provider
+    BASE_URLS = {
+        "groq": "https://api.groq.com/openai/v1",
+        "openai": None,  # Use OpenAI default
+        "huggingface": "https://api-inference.huggingface.co",
+    }
 
     def __init__(
         self,
         model: str | None = None,
         temperature: float = 0.3,
         use_dummy: bool = False,
+        provider: Provider = "groq",
+        api_key: str | None = None,
+        base_url: str | None = None,
     ) -> None:
         """Initialize the LLM extractor.
 
         Args:
-            model: Model name (uses OPENAI_MODEL env var if None)
+            model: Model name (uses provider default if None)
             temperature: Sampling temperature for generation
             use_dummy: Use dummy extractor for testing (no API calls)
+            provider: Provider to use ('groq', 'openai', 'huggingface')
+            api_key: API key (uses env var if None)
+            base_url: Custom base URL (uses provider default if None)
         """
-        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o")
+        self.provider = provider
         self.temperature = temperature
         self.use_dummy = use_dummy
+
+        # Set model default based on provider
+        if model is None:
+            model = self.DEFAULT_MODELS.get(provider, "gpt-4o")
+        self.model = model
+
+        # Set API key
+        if api_key is None:
+            if provider == "groq":
+                api_key = os.getenv("GROQ_API_KEY")
+            elif provider == "openai":
+                api_key = os.getenv("OPENAI_API_KEY")
+            elif provider == "huggingface":
+                api_key = os.getenv("HUGGINGFACE_API_KEY")
 
         if not use_dummy:
             from openai import OpenAI
 
-            self.client = OpenAI()
+            # Set base URL
+            if base_url is None:
+                base_url = self.BASE_URLS.get(provider)
+
+            self.client = OpenAI(
+                api_key=api_key,
+                base_url=base_url,
+            )
 
     def _build_extraction_prompt(self, text: str) -> str:
         """Build the prompt for commitment extraction.
@@ -98,6 +153,11 @@ Response:"""
         prompt = self._build_extraction_prompt(text)
 
         try:
+            # Hugging Face uses a different API format
+            if self.provider == "huggingface":
+                return self._extract_huggingface(prompt)
+
+            # OpenAI-compatible API (Groq, OpenAI)
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -108,15 +168,22 @@ Response:"""
                     {"role": "user", "content": prompt},
                 ],
                 temperature=self.temperature,
-                response_format={"type": "json_object"},
+                response_format={"type": "json_object"} if self.provider == "openai" else None,
             )
 
             result = response.choices[0].message.content
             if not result:
                 return []
 
+            # Parse JSON response (may have markdown code blocks)
+            result = self._clean_json_response(result)
             data = json.loads(result)
-            commitments = data.get("commitments", data)
+
+            # Handle both dict with "commitments" key and direct list
+            if isinstance(data, dict):
+                commitments = data.get("commitments", data)
+            else:
+                commitments = data
 
             nodes = []
             for item in commitments:
@@ -133,6 +200,90 @@ Response:"""
         except Exception as e:
             print(f"Error extracting commitments: {e}")
             return self._dummy_extract(text)
+
+    def _extract_huggingface(self, prompt: str) -> list[Node]:
+        """Extract using Hugging Face inference API.
+
+        Args:
+            prompt: The extraction prompt
+
+        Returns:
+            List of Node objects
+        """
+        import requests
+
+        headers = {
+            "Authorization": f"Bearer {self.client.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a precise commitment extractor. Always return valid JSON.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": self.temperature,
+            "max_tokens": 2048,
+        }
+
+        response = requests.post(
+            f"{self.client.base_url}/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+        response.raise_for_status()
+
+        result = response.json()
+        content = result["choices"][0]["message"]["content"]
+
+        if not content:
+            return []
+
+        # Clean and parse JSON
+        content = self._clean_json_response(content)
+        data = json.loads(content)
+
+        # Handle both dict with "commitments" key and direct list
+        if isinstance(data, dict):
+            commitments = data.get("commitments", data)
+        else:
+            commitments = data
+
+        nodes = []
+        for item in commitments:
+            nodes.append(
+                Node(
+                    text=item["text"],
+                    role=Role(item["role"]),
+                    confidence=item.get("confidence", 0.7),
+                )
+            )
+
+        return nodes
+
+    def _clean_json_response(self, response: str) -> str:
+        """Clean JSON response that may contain markdown code blocks.
+
+        Args:
+            response: Raw response string
+
+        Returns:
+            Cleaned JSON string
+        """
+        # Remove markdown code blocks
+        response = response.strip()
+        if response.startswith("```"):
+            lines = response.split("\n")
+            # Skip first line (```json or ```) and last line (```)
+            if len(lines) > 2:
+                response = "\n".join(lines[1:-1])
+
+        return response.strip()
 
     def _dummy_extract(self, text: str) -> list[Node]:
         """Dummy extractor for testing (splits by sentences).
@@ -179,5 +330,5 @@ Response:"""
         return nodes
 
     def __repr__(self) -> str:
-        mode = "dummy" if self.use_dummy else "api"
-        return f"LLMExtractor(model={self.model}, mode={mode})"
+        mode = "dummy" if self.use_dummy else self.provider
+        return f"LLMExtractor(provider={mode}, model={self.model})"

@@ -12,7 +12,7 @@ from cog_memory.cognitive_graph import CognitiveGraph
 from cog_memory.decay import DecayModule
 from cog_memory.deduplication import DeduplicationEngine
 from cog_memory.embedding_manager import EmbeddingManager
-from cog_memory.llm_extractor import LLMExtractor
+from cog_memory.llm_extractor import LLMExtractor, Provider
 from cog_memory.lance_store import LanceStore
 from cog_memory.node import Node, Role
 
@@ -31,8 +31,11 @@ class CognitiveMemory:
         db_path: str | Path = "./data/lancedb",
         model: str | None = None,
         embedding_model: str | None = None,
-        use_sentence_transformer: bool = False,
+        use_sentence_transformer: bool = False,  # Use Nomic by default
+        use_nomic: bool = True,  # Nomic via HTTP API (FREE, high quality, no CLI needed)
         use_dummy_extractor: bool = False,
+        provider: Provider = "groq",
+        llm_api_key: str | None = None,
     ) -> None:
         """Initialize the cognitive memory system.
 
@@ -40,8 +43,11 @@ class CognitiveMemory:
             db_path: Path to LanceDB database
             model: LLM model name for extraction
             embedding_model: Model name for embeddings
-            use_sentence_transformer: Use sentence-transformers instead of OpenAI
+            use_sentence_transformer: Use sentence-transformers (local, 384 dim)
+            use_nomic: Use Nomic embeddings via HTTP API (FREE, 768 dim, default)
             use_dummy_extractor: Use dummy extractor for testing
+            provider: LLM provider ('groq', 'openai', 'huggingface')
+            llm_api_key: API key for LLM provider (uses env var if None)
         """
         # Initialize components
         self.store = LanceStore(db_path=db_path)
@@ -49,10 +55,13 @@ class CognitiveMemory:
         self.extractor = LLMExtractor(
             model=model,
             use_dummy=use_dummy_extractor,
+            provider=provider,
+            api_key=llm_api_key,
         )
         self.embedding_manager = EmbeddingManager(
             model=embedding_model,
             use_sentence_transformer=use_sentence_transformer,
+            use_nomic=use_nomic,
         )
         self.deduplication = DeduplicationEngine()
         self.decay = DecayModule()

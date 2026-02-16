@@ -4,8 +4,9 @@ openai>=1.0.0
 # Vector database
 lancedb>=0.5.0
 
-# Alternative embedding model (optional)
-sentence-transformers>=2.2.0
+# Embedding models (choose one)
+nomic>=1.0.0  # FREE API, 768 dim, high quality (recommended)
+sentence-transformers>=2.2.0  # Local, 384 dim, fastest
 
 # Numerical computing
 numpy>=1.24.0

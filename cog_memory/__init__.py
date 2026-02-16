@@ -9,7 +9,7 @@ from cog_memory.cognitive_graph import CognitiveGraph
 from cog_memory.decay import DecayModule
 from cog_memory.deduplication import DeduplicationEngine
 from cog_memory.embedding_manager import EmbeddingManager
-from cog_memory.llm_extractor import LLMExtractor
+from cog_memory.llm_extractor import LLMExtractor, Provider
 from cog_memory.lance_store import LanceStore
 from cog_memory.node import Node, Role
 from cog_memory.query_interface import CognitiveMemory
@@ -24,6 +24,7 @@ __all__ = [
     "LanceStore",
     "EmbeddingManager",
     "LLMExtractor",
+    "Provider",
     "DeduplicationEngine",
     "ConflictDetector",
     "DecayModule",

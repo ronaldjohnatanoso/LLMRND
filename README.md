@@ -17,7 +17,7 @@ CogMemory addresses the problem of context window limitations in LLMs by:
 ### Requirements
 
 - Python 3.10+
-- OpenAI API key (or use sentence-transformers for local embeddings)
+- API key for LLM provider (**Groq is FREE and recommended**)
 
 ### Setup
 
@@ -35,19 +35,29 @@ pip install -r requirements.txt
 3. Configure environment variables:
 ```bash
 cp .env.example .env
-# Edit .env and add your OPENAI_API_KEY
 ```
+
+**Get a FREE API key from Groq** (recommended):
+- Go to https://console.groq.com/
+- Sign up and create an API key
+- Add to `.env`: `GROQ_API_KEY=gsk_...`
+
+Or use OpenAI (paid), Hugging Face (free tier), or dummy extractor (no API).
+
+See [docs/GROQ_SETUP.md](docs/GROQ_SETUP.md) for detailed setup instructions.
 
 ## Quick Start
 
 ```python
 from cog_memory import CognitiveMemory
 
-# Initialize the system
+# Option 1: Use Groq (FREE, Llama 3.1 8B) - Recommended
 memory = CognitiveMemory(
-    db_path="./data/lancedb",
-    use_dummy_extractor=False,  # Set True for testing without API
+    provider="groq",  # Uses GROQ_API_KEY from .env
 )
+
+# Option 2: Use dummy extractor (no API key required)
+# memory = CognitiveMemory(use_dummy_extractor=True)
 
 # Ingest text
 text = """

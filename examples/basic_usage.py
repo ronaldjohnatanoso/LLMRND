@@ -1,7 +1,22 @@
 """Basic usage example for CogMemory.
 
 Demonstrates paragraph ingestion, querying, and activation propagation.
+
+To use with Groq (FREE Llama 3.1 8B):
+1. Get API key: https://console.groq.com/
+2. Set GROQ_API_KEY environment variable
+3. Run this script
+
+To use with dummy extractor (no API required):
+- Set use_dummy_extractor=True below
 """
+
+import os
+import sys
+from pathlib import Path
+
+# Add project root to path for imports without pip install
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from cog_memory import CognitiveMemory, Role
 
@@ -9,11 +24,23 @@ from cog_memory import CognitiveMemory, Role
 def main():
     """Run the basic usage example."""
     # Initialize the cognitive memory system
-    # Use dummy extractor for testing without API key
-    memory = CognitiveMemory(
-        db_path="./data/lancedb",
-        use_dummy_extractor=True,
-    )
+
+    # Option 1: Use Groq (FREE, recommended) with Llama 3.1 8B
+    # Get API key from: https://console.groq.com/
+    if os.getenv("GROQ_API_KEY"):
+        memory = CognitiveMemory(
+            db_path="./data/lancedb",
+            provider="groq",
+            model="llama-3.1-8b-instant",
+        )
+        print("Using Groq with Llama 3.1 8B (FREE)\n")
+    # Option 2: Use dummy extractor for testing without API key
+    else:
+        memory = CognitiveMemory(
+            db_path="./data/lancedb",
+            use_dummy_extractor=True,
+        )
+        print("Using dummy extractor (no API key required)\n")
 
     # Sample product launch scenario
     text = """
