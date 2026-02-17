@@ -112,7 +112,7 @@ class LLMExtractor:
         Returns:
             Formatted prompt for the LLM
         """
-        return f"""Extract commitments from the following text and assign each a meta-role.
+        return f"""Extract meaningful commitments from the following text and assign each a meta-role.
 
 Meta-roles:
 - fact: Verifiable information
@@ -122,8 +122,32 @@ Meta-roles:
 - decision: Chosen course of action
 - conditional_dependency: Relationship between nodes (if X then Y)
 
+CRITICAL REQUIREMENTS:
+- Extract ONLY complete sentences that express a full thought
+- Do NOT break sentences into fragments
+- Do NOT extract partial phrases or segments
+- Each commitment MUST be a standalone, meaningful statement
+- Prioritize quality over quantity - better to miss a commitment than extract a bad one
+
+Examples of GOOD extractions:
+Input: "The system requires 50 TB of storage and must maintain 99.99% uptime."
+✓ Extract: "The system requires 50 TB of storage" (fact)
+✓ Extract: "The system must maintain 99.99% uptime" (goal)
+
+Input: "banana is the best fucking food in the whole universe"
+✓ Extract: "banana is the best fucking food in the whole universe" (observation)
+✗ DO NOT extract: "banana is the best"
+✗ DO NOT extract: "the whole universe"
+✗ DO NOT extract: "the best fucking food"
+
+Input: "Due to budget constraints, we cannot use enterprise tools and must use open source alternatives."
+✓ Extract: "Due to budget constraints, we cannot use enterprise tools" (constraint)
+✓ Extract: "we must use open source alternatives" (decision)
+✗ DO NOT extract: "budget constraints"
+✗ DO NOT extract: "enterprise tools"
+
 For each commitment, provide:
-1. text: The exact commitment text
+1. text: A complete, standalone sentence (minimum 15 characters, complete thought)
 2. role: One of the meta-roles above
 3. confidence: Score from 0.0 to 1.0
 
@@ -187,13 +211,29 @@ Response:"""
 
             nodes = []
             for item in commitments:
+                node_text = item.get("text", "").strip()
+
+                # Validate minimum length (15 characters)
+                if len(node_text) < 15:
+                    print(f"⚠️ Skipping short commitment: '{node_text[:50]}...' ({len(node_text)} chars)")
+                    continue
+
+                # Validate meaningful content (not just repeated words)
+                words = node_text.split()
+                if len(words) < 3:
+                    print(f"⚠️ Skipping commitment with too few words: '{node_text[:50]}...'")
+                    continue
+
                 nodes.append(
                     Node(
-                        text=item["text"],
+                        text=node_text,
                         role=Role(item["role"]),
                         confidence=item.get("confidence", 0.7),
                     )
                 )
+
+            if not nodes:
+                print("⚠️ No valid commitments found after filtering")
 
             return nodes
 
@@ -256,13 +296,29 @@ Response:"""
 
         nodes = []
         for item in commitments:
+            node_text = item.get("text", "").strip()
+
+            # Validate minimum length (15 characters)
+            if len(node_text) < 15:
+                print(f"⚠️ Skipping short commitment: '{node_text[:50]}...' ({len(node_text)} chars)")
+                continue
+
+            # Validate meaningful content (not just repeated words)
+            words = node_text.split()
+            if len(words) < 3:
+                print(f"⚠️ Skipping commitment with too few words: '{node_text[:50]}...'")
+                continue
+
             nodes.append(
                 Node(
-                    text=item["text"],
+                    text=node_text,
                     role=Role(item["role"]),
                     confidence=item.get("confidence", 0.7),
                 )
             )
+
+        if not nodes:
+            print("⚠️ No valid commitments found after filtering")
 
         return nodes
 

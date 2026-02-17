@@ -40,7 +40,8 @@ class Node:
         text: The textual content of the commitment
         role: The meta-role assigned to this commitment
         confidence: Confidence score (0.0 to 1.0) for this commitment
-        activation: Current activation level (0.0 to 1.0)
+        activation: Current activation level (0.0 to 1.0) - temporary, reset each query
+        similarity_to_query: Original similarity to the query that matched this node - NEVER changes
         neighbors: Dictionary mapping neighbor_id -> edge weight
         metadata: Optional metadata (timestamps, evidence, etc.)
         embedding: Optional pre-computed embedding vector
@@ -51,6 +52,7 @@ class Node:
     role: Role = Role.FACT
     confidence: float = 0.7
     activation: float = 0.0
+    similarity_to_query: float = 0.0
     neighbors: dict[str, float] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
     embedding: list[float] | None = None
@@ -96,6 +98,7 @@ class Node:
             "role": self.role.value,
             "confidence": self.confidence,
             "activation": self.activation,
+            "similarity_to_query": self.similarity_to_query,
             "neighbors": self.neighbors,
             "metadata": self.metadata,
         }
@@ -116,6 +119,7 @@ class Node:
             role=Role(data["role"]),
             confidence=data.get("confidence", 0.7),
             activation=data.get("activation", 0.0),
+            similarity_to_query=data.get("similarity_to_query", 0.0),
             neighbors=data.get("neighbors", {}),
             metadata=data.get("metadata", {}),
         )

@@ -47,20 +47,23 @@ class CognitiveGraph:
     def __init__(
         self,
         propagation_depth: int = 2,
-        activation_threshold: float = 0.01,
+        activation_threshold: float = 0.5,
         default_boost: float = 1.0,
+        min_delta: float = 0.3,
     ) -> None:
         """Initialize the cognitive graph.
 
         Args:
             propagation_depth: Maximum depth for activation propagation
-            activation_threshold: Minimum activation to continue propagation
+            activation_threshold: Minimum activation to continue propagation (default: 0.5)
             default_boost: Default boost multiplier when no role-specific rule exists
+            min_delta: Minimum activation delta to propagate to children (default: 0.3)
         """
         self.nodes: dict[str, Node] = {}
         self.propagation_depth = propagation_depth
         self.activation_threshold = activation_threshold
         self.default_boost = default_boost
+        self.min_delta = min_delta
 
     def add_node(self, node: Node) -> None:
         """Add a node to the graph.
@@ -161,12 +164,19 @@ class CognitiveGraph:
                     (node.role, neighbor.role), self.default_boost
                 )
 
-                # Apply activation
-                activation_delta = node.activation * weight * role_boost
+                # Use parent's similarity_to_query (not activation) for propagation
+                # This prevents stale activation values from affecting calculations
+                base_similarity = node.similarity_to_query if node.similarity_to_query > 0 else node.activation
+                activation_delta = base_similarity * weight * role_boost
+
+                # Only propagate significant signals (above min_delta threshold)
+                if activation_delta < self.min_delta:
+                    continue
+
                 neighbor.update_activation(activation_delta)
 
-                # Add to queue if not at max depth
-                if current_depth + 1 < depth:
+                # Add to queue if not at max depth AND neighbor will continue propagating
+                if current_depth + 1 < depth and neighbor.activation >= self.activation_threshold:
                     queue.append((neighbor_id, current_depth + 1))
 
     def activate_goals(self, goal_ids: list[str], activation: float = 1.0) -> None:
@@ -183,9 +193,10 @@ class CognitiveGraph:
             self.propagate_activation(goal_id)
 
     def reset_all_activations(self) -> None:
-        """Reset all node activations to zero."""
+        """Reset all node activations and similarity_to_query to zero."""
         for node in self.nodes.values():
             node.reset_activation()
+            node.similarity_to_query = 0.0  # Reset similarity tracking too
 
     def get_top_activated(self, n: int = 10) -> list[Node]:
         """Get the top N most activated nodes.
@@ -196,8 +207,10 @@ class CognitiveGraph:
         Returns:
             List of nodes sorted by activation (descending)
         """
+        # Filter out nodes with zero activation
+        activated_nodes = [n for n in self.nodes.values() if n.activation > 0]
         sorted_nodes = sorted(
-            self.nodes.values(), key=lambda n: n.activation, reverse=True
+            activated_nodes, key=lambda n: n.activation, reverse=True
         )
         return sorted_nodes[:n]
 

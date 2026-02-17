@@ -70,6 +70,7 @@ class LanceStore:
                 pa.field("role", pa.string()),
                 pa.field("confidence", pa.float64()),
                 pa.field("activation", pa.float64()),
+                pa.field("similarity_to_query", pa.float64()),
                 pa.field("neighbors", pa.string()),
                 pa.field("metadata", pa.string()),
                 pa.field("vector", pa.list_(pa.float32(), list_size=self.embedding_dim)),
@@ -86,6 +87,7 @@ class LanceStore:
         neighbors: dict | None = None,
         metadata: dict | None = None,
         activation: float = 0.0,
+        similarity_to_query: float = 0.0,
     ) -> None:
         """Add a node to the database.
 
@@ -98,6 +100,7 @@ class LanceStore:
             neighbors: Neighbor dictionary (default: empty)
             metadata: Optional metadata dictionary (default: empty)
             activation: Activation level (default: 0.0)
+            similarity_to_query: Original similarity to query (default: 0.0)
         """
         record = {
             "id": node_id,
@@ -105,6 +108,7 @@ class LanceStore:
             "role": role,
             "confidence": confidence,
             "activation": activation,
+            "similarity_to_query": similarity_to_query,
             "neighbors": json.dumps(neighbors or {}),
             "metadata": json.dumps(metadata or {}),
             "vector": embedding,
@@ -149,6 +153,12 @@ class LanceStore:
         # Convert to list of dicts
         records = []
         for _, row in results.iterrows():
+            # Convert distance to similarity (lower distance = higher similarity)
+            # Distance can range from 0 to 2 for cosine distance
+            # Convert to similarity in range [0, 1]
+            distance = row.get("_distance", 1.0)
+            similarity = max(0.0, 1.0 - (distance / 2.0))  # Normalize to 0-1
+
             records.append(
                 {
                     "id": row["id"],
@@ -156,9 +166,10 @@ class LanceStore:
                     "role": row["role"],
                     "confidence": row["confidence"],
                     "activation": row["activation"],
+                    "similarity_to_query": row.get("similarity_to_query", 0.0),
                     "neighbors": json.loads(row["neighbors"]),
                     "metadata": json.loads(row["metadata"]),
-                    "similarity": row.get("_score", 0.0),
+                    "similarity": similarity,
                 }
             )
 
@@ -173,18 +184,21 @@ class LanceStore:
         Returns:
             Node record as dictionary, or None if not found
         """
-        results = self.table.search(f"id = '{node_id}'").limit(1).to_pandas()
+        # Get all nodes and filter (LanceDB doesn't have a simple get-by-ID)
+        results = self.table.search().limit(None).to_pandas()
 
-        if len(results) == 0:
+        filtered = results[results["id"] == node_id]
+        if len(filtered) == 0:
             return None
 
-        row = results.iloc[0]
+        row = filtered.iloc[0]
         return {
             "id": row["id"],
             "text": row["text"],
             "role": row["role"],
             "confidence": row["confidence"],
             "activation": row["activation"],
+            "similarity_to_query": row.get("similarity_to_query", 0.0),
             "neighbors": json.loads(row["neighbors"]),
             "metadata": json.loads(row["metadata"]),
         }
@@ -201,16 +215,17 @@ class LanceStore:
             updates: Dictionary of fields to update
         """
         # Convert dict fields to JSON strings
-        if "neighbors" in updates and isinstance(updates["neighbors"], dict):
-            updates["neighbors"] = json.dumps(updates["neighbors"])
-        if "metadata" in updates and isinstance(updates["metadata"], dict):
-            updates["metadata"] = json.dumps(updates["metadata"])
+        values = {}
+        for key, value in updates.items():
+            if key == "neighbors" and isinstance(value, dict):
+                values[key] = json.dumps(value)
+            elif key == "metadata" and isinstance(value, dict):
+                values[key] = json.dumps(value)
+            else:
+                values[key] = value
 
-        # LanceDB uses SQL for updates
-        set_clauses = [f"{k} = '{v}'" for k, v in updates.items()]
-        set_clause = ", ".join(set_clauses)
-
-        self.table.update(f"WHERE id = '{node_id}' SET {set_clause}")
+        # Use LanceDB's update API with values and where clause
+        self.table.update(values=values, where=f"id = '{node_id}'")
 
     def delete_node(self, node_id: str) -> None:
         """Delete a node from the database.
@@ -237,6 +252,7 @@ class LanceStore:
                     "role": row["role"],
                     "confidence": row["confidence"],
                     "activation": row["activation"],
+                    "similarity_to_query": row.get("similarity_to_query", 0.0),
                     "neighbors": json.loads(row["neighbors"]),
                     "metadata": json.loads(row["metadata"]),
                 }
