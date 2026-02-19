@@ -131,7 +131,7 @@ async def add_nodes(request: AddNodesRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/nodes", response_model[List[NodeResponse])
+@app.get("/nodes", response_model=List[NodeResponse])
 async def get_all_nodes():
     """Get all nodes in memory."""
     if not memory:
