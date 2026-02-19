@@ -659,7 +659,7 @@ def main():
             with col1:
                 view_mode = st.radio(
                     "View Mode",
-                    ["📊 Compact Graph", "📄 Detailed Tree", "🎬 Animated"],
+                    ["📊 Compact Graph", "📄 Detailed Tree", "🎬 Animated", "🌳 Visual Graph"],
                     horizontal=True,
                     label_visibility="collapsed"
                 )
@@ -1103,6 +1103,406 @@ def main():
                     f"<div style='width:{progress*100}%;background:{status_color};height:100%;border-radius:4px;'></div></div>",
                     unsafe_allow_html=True
                 )
+
+            elif view_mode == "🌳 Visual Graph":
+                # VISUAL GRAPH MODE - Animated tree visualization
+                st.subheader("🌳 Visual Propagation Graph")
+
+                # Run simulation if needed
+                if "sim_data" not in st.session_state or st.session_state.sim_data.get("query") != query:
+                    with st.spinner("Running simulation..."):
+                        sim_data = memory.query_simulation(
+                            query_text=query,
+                            top_k=total_k,
+                            propagation_depth=depth,
+                            min_similarity_threshold=min_similarity,
+                            candidate_multiplier=candidate_multiplier,
+                            decay_per_hop=0.7
+                        )
+                        st.session_state.sim_data = sim_data
+                        st.session_state.viz_step = 0
+
+                sim_data = st.session_state.sim_data
+                total_steps = sim_data["total_steps"]
+
+                # Navigation controls
+                col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
+                with col1:
+                    if st.button("⏮️", key="viz_first"):
+                        st.session_state.viz_step = 0
+                with col2:
+                    if st.button("◀️", key="viz_prev"):
+                        if st.session_state.viz_step > 0:
+                            st.session_state.viz_step -= 1
+                with col3:
+                    viz_step = st.number_input(
+                        "VizStep",
+                        min_value=0,
+                        max_value=total_steps - 1,
+                        value=st.session_state.viz_step,
+                        step=1,
+                        label_visibility="collapsed",
+                        key="viz_step_input",
+                        format="%d"
+                    )
+                    st.session_state.viz_step = int(viz_step)
+                    st.markdown(f"<div style='text-align:center;'>Step {viz_step + 1}/{total_steps}</div>", unsafe_allow_html=True)
+                with col4:
+                    if st.button("▶️", key="viz_next"):
+                        if st.session_state.viz_step < total_steps - 1:
+                            st.session_state.viz_step += 1
+                with col5:
+                    if st.button("⏭️", key="viz_last"):
+                        st.session_state.viz_step = total_steps - 1
+
+                # Build graph state up to current step
+                timeline = sim_data["timeline"]
+                nodes_to_show = {}  # node_id -> {x, y, label, activation, role, step_added}
+                edges_to_show = []   # {from, to, step_added}
+
+                # Track layer structure for better layout
+                layer_structure = {0: ["query"]}  # layer -> list of node_ids
+
+                # Track all activations up to current step
+                for step_idx in range(viz_step + 1):
+                    step_data = timeline[step_idx]
+                    step_type = step_data["type"]
+
+                    if step_type == "search":
+                        # Add query node at top center
+                        nodes_to_show["query"] = {
+                            "id": "query",
+                            "label": query[:25] + "..." if len(query) > 25 else query,
+                            "role": "QUERY",
+                            "activation": 1.0,
+                            "x": 50,
+                            "y": 60,
+                            "step_added": step_idx,
+                            "color": "#FF6B6B",
+                            "layer": 0
+                        }
+
+                    elif step_type == "layer_1":
+                        # Add Layer 1 nodes
+                        nodes_data = step_data.get("nodes_data", [])
+                        layer_structure[1] = []
+
+                        for i, node_data in enumerate(nodes_data):
+                            node_id = node_data["id"]
+                            if node_id not in nodes_to_show:
+                                # Spread evenly across width
+                                margin = 15
+                                available_width = 100 - 2 * margin
+                                x = margin + (available_width / max(1, len(nodes_data) - 1)) * i if len(nodes_data) > 1 else 50
+                                y = 180
+
+                                role_colors = {
+                                    "FACT": "#4ECDC4", "OBSERVATION": "#95E1D3",
+                                    "GOAL": "#FF6B6B", "CONSTRAINT": "#C44D58",
+                                    "DECISION": "#FFB74D"
+                                }
+                                nodes_to_show[node_id] = {
+                                    "id": node_id[:8],
+                                    "full_id": node_id,
+                                    "label": node_data["text"][:20] + "..." if len(node_data["text"]) > 20 else node_data["text"],
+                                    "role": node_data["role"],
+                                    "activation": node_data["activation"],
+                                    "x": x,
+                                    "y": y,
+                                    "step_added": step_idx,
+                                    "color": role_colors.get(node_data["role"], "#95E1D3"),
+                                    "layer": 1
+                                }
+                                layer_structure[1].append(node_id)
+                                # Add edge from query
+                                edges_to_show.append({
+                                    "from": "query",
+                                    "to": node_id,
+                                    "step_added": step_idx,
+                                    "strength": node_data["activation"]
+                                })
+
+                    elif step_type == "propagation":
+                        # Add propagation edges and new nodes
+                        parent_id = step_data.get("parent_id", "")
+                        child_id = step_data.get("child_id", "")
+                        newly_activated = step_data.get("newly_activated", False)
+                        hop = step_data.get("hop", 1)
+
+                        # Initialize layer structure if needed
+                        if hop + 1 not in layer_structure:
+                            layer_structure[hop + 1] = []
+
+                        # Find parent node
+                        parent = nodes_to_show.get(parent_id)
+                        if not parent and parent_id != "query":
+                            # Parent missing - add it with default position
+                            # This shouldn't happen but defensive coding
+                            continue
+
+                        # Calculate position for child
+                        # Position based on parent's x with some offset
+                        if parent:
+                            parent_x = parent["x"]
+                            # Count how many children this parent already has
+                            existing_children = [e for e in edges_to_show if e["from"] == parent_id]
+                            child_num = len(existing_children)
+
+                            # Offset children from parent
+                            max_offset = 30
+                            offset = (child_num + 1) * 8
+                            # Alternate sides
+                            x = parent_x + (offset if child_num % 2 == 0 else -offset)
+                            x = max(10, min(90, x))  # Keep within bounds
+                        else:
+                            x = 50
+
+                        y = 180 + hop * 100
+
+                        if newly_activated and child_id not in nodes_to_show:
+                            delta = step_data.get("delta", 0)
+                            # Color intensity based on signal strength
+                            intensity = min(1.0, delta * 3)
+                            r = int(100 + 155 * intensity)
+                            g = int(200 - 100 * intensity)
+                            b = int(150 - 100 * intensity)
+                            color = f"#{r:02x}{g:02x}{b:02x}"
+
+                            nodes_to_show[child_id] = {
+                                "id": child_id[:8],
+                                "full_id": child_id,
+                                "label": f"Hop{hop}",
+                                "role": f"L{hop+1}",
+                                "activation": delta,
+                                "x": x,
+                                "y": y,
+                                "step_added": step_idx,
+                                "color": color,
+                                "layer": hop + 1
+                            }
+                            layer_structure[hop + 1].append(child_id)
+
+                        # Add edge (even if node already exists, to show the propagation attempt)
+                        edges_to_show.append({
+                            "from": parent_id,
+                            "to": child_id,
+                            "step_added": step_idx,
+                            "strength": step_data.get("delta", 0),
+                            "newly_activated": newly_activated
+                        })
+
+                # Generate SVG visualization
+                svg_width = 800
+                svg_height = 500
+
+                svg_elements = []
+
+                # Background
+                svg_elements.append(f'<rect width="100%" height="100%" fill="#1a1a2e"/>')
+
+                # Title and current step info
+                current_step_data = timeline[viz_step]
+                step_type = current_step_data["type"]
+                step_messages = {
+                    "search": "🔍 Searching for similar nodes...",
+                    "search_results": f"📊 Found {len(current_step_data.get('candidates', []))} candidates",
+                    "layer_1": "✅ Layer 1: Direct matches activated",
+                    "hop_start": f"🌊 Starting hop {current_step_data.get('hop', 0)}",
+                    "propagation": f"➡️ Propagating: {current_step_data.get('parent_id', '')[:8]} → {current_step_data.get('child_id', '')[:8]}",
+                    "gate_1_fail": "🚫 Gate 1: Signal too weak",
+                    "gate_2_fail": "🚫 Gate 2: Node too weak",
+                    "filtered": "🔍 Filtering weak matches...",
+                    "complete": "✨ Propagation complete!"
+                }
+
+                svg_elements.append(f'''
+                    <text x="400" y="30" text-anchor="middle" fill="#ffffff" font-size="18" font-weight="bold">
+                        {step_messages.get(step_type, "Step " + str(viz_step + 1))}
+                    </text>
+                ''')
+
+                # Draw edges (draw first so they appear behind nodes)
+                for edge in edges_to_show:
+                    from_node = nodes_to_show.get(edge["from"])
+                    to_node = nodes_to_show.get(edge["to"])
+
+                    if from_node and to_node:
+                        x1 = from_node['x'] * svg_width / 100
+                        y1 = from_node['y']
+                        x2 = to_node['x'] * svg_width / 100
+                        y2 = to_node['y']
+
+                        # Edge opacity based on strength
+                        strength = edge.get("strength", 0.5)
+                        opacity = 0.2 + min(0.8, strength * 2)
+
+                        # Use curved path for smoother tree look
+                        # Control point for bezier curve (midpoint, slightly lower)
+                        mid_x = (x1 + x2) / 2
+                        mid_y = (y1 + y2) / 2 + 20
+
+                        # Animated edge for newly added propagation
+                        if edge["step_added"] == viz_step and step_type == "propagation":
+                            color = "#FFD700" if edge.get("newly_activated") else "#FFA500"
+                            svg_elements.append(f'''
+                                <defs>
+                                    <marker id="arrow{edge['from'][:4]}{edge['to'][:4]}" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                        <polygon points="0 0, 10 3.5, 0 7" fill="{color}" />
+                                    </marker>
+                                </defs>
+                                <path d="M {x1} {y1} Q {mid_x} {mid_y} {x2} {y2}"
+                                      fill="none" stroke="{color}" stroke-width="3" opacity="{opacity}"
+                                      marker-end="url(#arrow{edge['from'][:4]}{edge['to'][:4]})"
+                                      stroke-dasharray="8,4">
+                                    <animate attributeName="stroke-dashoffset" from="24" to="0" dur="0.8s" repeatCount="2"/>
+                                </path>
+                            ''')
+                        else:
+                            # Static edge
+                            svg_elements.append(f'''
+                                <path d="M {x1} {y1} Q {mid_x} {mid_y} {x2} {y2}"
+                                      fill="none" stroke="#4ECDC4" stroke-width="{1 + strength * 2}" opacity="{opacity}"/>
+                            ''')
+
+                # Draw nodes
+                for node_id, node in nodes_to_show.items():
+                    x = node["x"] * svg_width / 100
+                    y = node["y"]
+                    activation = node["activation"]
+                    size = 25 + activation * 25  # Size 25-50 based on activation
+
+                    # Glow effect for high activation nodes
+                    if activation > 0.7:
+                        glow_color = node['color']
+                        svg_elements.append(f'''
+                            <circle cx="{x}" cy="{y}" r="{size + 8}" fill="none" stroke="{glow_color}" stroke-width="1" opacity="0.3">
+                                <animate attributeName="r" values="{size+5};{size+12};{size+5}" dur="2s" repeatCount="indefinite"/>
+                                <animate attributeName="opacity" values="0.3;0.1;0.3" dur="2s" repeatCount="indefinite"/>
+                            </circle>
+                        ''')
+
+                    # Pulse animation for newly added nodes
+                    if node["step_added"] == viz_step:
+                        svg_elements.append(f'''
+                            <circle cx="{x}" cy="{y}" r="{size + 15}" fill="none" stroke="{node['color']}" stroke-width="3" opacity="0.6">
+                                <animate attributeName="r" from="{size}" to="{size + 25}" dur="0.6s" repeatCount="1"/>
+                                <animate attributeName="opacity" from="0.8" to="0" dur="0.6s" repeatCount="1"/>
+                            </circle>
+                        ''')
+
+                    # Shadow/depth effect
+                    svg_elements.append(f'''
+                        <circle cx="{x + 2}" cy="{y + 2}" r="{size}" fill="rgba(0,0,0,0.3)"/>
+                    ''')
+
+                    # Main node circle with gradient
+                    gradient_id = f"grad_{node['id'][:8]}"
+                    svg_elements.append(f'''
+                        <defs>
+                            <radialGradient id="{gradient_id}" cx="30%" cy="30%">
+                                <stop offset="0%" style="stop-color:white;stop-opacity:0.3"/>
+                                <stop offset="100%" style="stop-color:{node['color']};stop-opacity:1"/>
+                            </radialGradient>
+                        </defs>
+                        <circle cx="{x}" cy="{y}" r="{size}" fill="url(#{gradient_id})" stroke="#ffffff" stroke-width="2"/>
+                    ''')
+
+                    # Node label (role abbreviation)
+                    role_text = node['role'][:3].upper()
+                    svg_elements.append(f'''
+                        <text x="{x}" y="{y + 1}" text-anchor="middle" dominant-baseline="middle"
+                              fill="#ffffff" font-size="{max(8, int(size/2.5))}" font-weight="bold">
+                            {role_text}
+                        </text>
+                    ''')
+
+                    # Node text label below (truncate if too long)
+                    label_text = node['label']
+                    if len(label_text) > 18:
+                        label_text = label_text[:15] + "..."
+                    svg_elements.append(f'''
+                        <text x="{x}" y="{y + size + 14}" text-anchor="middle" fill="#e0e0e0" font-size="10" font-family="sans-serif">
+                            {label_text}
+                        </text>
+                    ''')
+
+                    # Activation value badge
+                    badge_color = "#4CAF50" if activation > 0.7 else "#FFC107" if activation > 0.4 else "#FF5722"
+                    svg_elements.append(f'''
+                        <rect x="{x - 15}" y="{y + size + 20}" width="30" height="14" rx="4" fill="{badge_color}" opacity="0.9"/>
+                        <text x="{x}" y="{y + size + 31}" text-anchor="middle" fill="#ffffff" font-size="9" font-weight="bold">
+                            {activation:.2f}
+                        </text>
+                    ''')
+
+                # Layer indicators on the left side
+                for layer in sorted(layer_structure.keys()):
+                    if layer == 0:
+                        y_pos = 60
+                        label = "Query"
+                    else:
+                        y_pos = 180 + (layer - 1) * 100
+                        label = f"Layer {layer}"
+
+                    svg_elements.append(f'''
+                        <text x="20" y="{y_pos}" text-anchor="start" fill="#666666" font-size="10" font-weight="bold">
+                            {label}
+                        </text>
+                        <line x1="60" y1="{y_pos}" x2="750" y2="{y_pos}" stroke="#333333" stroke-width="1" stroke-dasharray="4,4" opacity="0.3"/>
+                    ''')
+
+                # Legend at bottom
+                legend_y = svg_height - 50
+                legend_items = [
+                    ("QUERY", "#FF6B6B"), ("FACT", "#4ECDC4"), ("GOAL", "#FF6B6B"),
+                    ("OBS", "#95E1D3"), ("DECISION", "#FFB74D"), ("PROP", "#88CC88")
+                ]
+                for i, (label, color) in enumerate(legend_items):
+                    x = 80 + i * 110
+                    svg_elements.append(f'''
+                        <circle cx="{x}" cy="{legend_y}" r="8" fill="{color}" stroke="#ffffff" stroke-width="1"/>
+                        <text x="{x + 12}" y="{legend_y + 4}" fill="#aaaaaa" font-size="10">{label}</text>
+                    ''')
+
+                # Edge strength legend
+                svg_elements.append(f'''
+                    <text x="680" y="{legend_y - 15}" text-anchor="middle" fill="#888888" font-size="9">Edge Strength</text>
+                    <line x1="630" y1="{legend_y}" x2="680" y2="{legend_y}" stroke="#4ECDC4" stroke-width="1" opacity="0.4"/>
+                    <text x="655" y="{legend_y + 12}" text-anchor="middle" fill="#666666" font-size="8">Weak</text>
+                    <line x1="700" y1="{legend_y}" x2="750" y2="{legend_y}" stroke="#4ECDC4" stroke-width="3" opacity="0.9"/>
+                    <text x="725" y="{legend_y + 12}" text-anchor="middle" fill="#666666" font-size="8">Strong</text>
+                ''')
+
+                # Combine SVG
+                svg_html = f'''
+                    <svg width="100%" height="{svg_height}" viewBox="0 0 {svg_width} {svg_height}" xmlns="http://www.w3.org/2000/svg">
+                        {''.join(svg_elements)}
+                    </svg>
+                '''
+
+                st.markdown(svg_html, unsafe_allow_html=True)
+
+                # Step info panel
+                with st.expander("📊 Step Details", expanded=True):
+                    st.write(f"**Step Type:** `{step_type}`")
+                    st.write(f"**Nodes Visible:** {len(nodes_to_show)}")
+                    st.write(f"**Edges:** {len(edges_to_show)}")
+                    if step_type == "propagation":
+                        col1, col2, col3 = st.columns(3)
+                        col1.metric("Signal Strength", f"Δ{current_step_data.get('delta', 0):.4f}")
+                        col2.metric("Hop", f"{current_step_data.get('hop', 0)}")
+                        col3.metric("Newly Activated", "✅" if current_step_data.get('newly_activated') else "❌")
+
+                # Progress indicator
+                progress = (viz_step + 1) / total_steps
+                st.markdown(f'''
+                    <div style="width:100%;background:#e9ecef;height:8px;border-radius:4px;margin-top:16px;">
+                        <div style="width:{progress*100}%;background:#4ECDC4;height:100%;border-radius:4px;"></div>
+                    </div>
+                    <p style="text-align:center;color:#888888;font-size:12px;margin-top:8px;">
+                        {viz_step + 1} of {total_steps} steps ({progress*100:.1f}%)
+                    </p>
+                ''', unsafe_allow_html=True)
 
         else:
             st.info("Enter a query above to see propagation results")
