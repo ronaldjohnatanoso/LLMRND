@@ -7,6 +7,10 @@ from pydantic import BaseModel
 from typing import List, Optional
 import sys
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Add parent directory to path to import cog_memory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -27,6 +31,9 @@ app.add_middleware(
 
 # Global memory instance
 memory = None
+
+# Check if using local embeddings
+USE_LOCAL_EMBEDDINGS = os.getenv("USE_LOCAL_EMBEDDINGS", "false").lower() == "true"
 
 # Request/Response models
 class AddNodesRequest(BaseModel):
@@ -61,10 +68,25 @@ async def startup_event():
     """Initialize CogMemory on startup."""
     global memory
     try:
-        memory = CognitiveMemory()
-        print("✅ CogMemory initialized")
+        # Initialize with appropriate embedding manager
+        if USE_LOCAL_EMBEDDINGS:
+            print("🔄 Using local sentence-transformers embeddings")
+            memory = CognitiveMemory(use_sentence_transformer=True, use_nomic=False)
+        else:
+            api_key = os.getenv("NOMIC_API_KEY")
+            if not api_key or api_key == "your_nomic_api_key_here":
+                print("⚠️  NOMIC_API_KEY not set, falling back to local embeddings")
+                print("   Set USE_LOCAL_EMBEDDINGS=true in .env to suppress this warning")
+                memory = CognitiveMemory(use_sentence_transformer=True, use_nomic=False)
+            else:
+                print("🌐 Using Nomic API embeddings")
+                memory = CognitiveMemory(use_nomic=True, use_sentence_transformer=False)
+
+        print(f"✅ CogMemory initialized (embeddings: {'local' if USE_LOCAL_EMBEDDINGS or not os.getenv('NOMIC_API_KEY') else 'Nomic API'})")
     except Exception as e:
         print(f"❌ Error initializing CogMemory: {e}")
+        import traceback
+        traceback.print_exc()
 
 @app.get("/")
 async def root():
