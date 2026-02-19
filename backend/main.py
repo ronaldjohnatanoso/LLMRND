@@ -1,0 +1,189 @@
+"""
+FastAPI backend for CogMemory system.
+"""
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
+import sys
+import os
+
+# Add parent directory to path to import cog_memory
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from cog_memory.query_interface import CognitiveMemory
+from cog_memory.cognitive_graph import NodeRole
+
+app = FastAPI(title="CogMemory API", version="1.0.0")
+
+# CORS for Next.js frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Global memory instance
+memory = None
+
+# Request/Response models
+class AddNodesRequest(BaseModel):
+    texts: List[str]
+    role: Optional[str] = "FACT"
+
+class QueryRequest(BaseModel):
+    query_text: str
+    top_k: int = 10
+    propagation_depth: int = 3
+    min_similarity_threshold: float = 0.55
+    candidate_multiplier: int = 2
+    decay_per_hop: float = 0.7
+
+class NodeResponse(BaseModel):
+    id: str
+    text: str
+    role: str
+    activation: float
+    confidence: float
+    neighbors: List[str]
+
+class SimulationResponse(BaseModel):
+    query: str
+    timeline: List[dict]
+    total_steps: int
+    final_states: List[dict]
+    settings: dict
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize CogMemory on startup."""
+    global memory
+    try:
+        memory = CognitiveMemory()
+        print("✅ CogMemory initialized")
+    except Exception as e:
+        print(f"❌ Error initializing CogMemory: {e}")
+
+@app.get("/")
+async def root():
+    return {"message": "CogMemory API", "status": "running"}
+
+@app.get("/health")
+async def health():
+    """Health check endpoint."""
+    return {"status": "healthy", "memory_initialized": memory is not None}
+
+@app.post("/nodes", response_model=List[NodeResponse])
+async def add_nodes(request: AddNodesRequest):
+    """Add new nodes to memory."""
+    if not memory:
+        raise HTTPException(status_code=503, detail="Memory not initialized")
+
+    try:
+        role = NodeRole[request.role.upper()] if request.role else NodeRole.FACT
+        new_nodes = memory.add_commitments(
+            texts=request.texts,
+            default_role=role
+        )
+
+        return [
+            NodeResponse(
+                id=node.id,
+                text=node.text,
+                role=node.role.value,
+                activation=node.activation,
+                confidence=node.confidence,
+                neighbors=list(node.neighbors.keys())
+            )
+            for node in new_nodes
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/nodes", response_model[List[NodeResponse])
+async def get_all_nodes():
+    """Get all nodes in memory."""
+    if not memory:
+        raise HTTPException(status_code=503, detail="Memory not initialized")
+
+    try:
+        nodes = memory.graph.get_all_nodes()
+        return [
+            NodeResponse(
+                id=node.id,
+                text=node.text,
+                role=node.role.value,
+                activation=node.activation,
+                confidence=node.confidence,
+                neighbors=list(node.neighbors.keys())
+            )
+            for node in nodes
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/query", response_model=List[NodeResponse])
+async def query(request: QueryRequest):
+    """Query memory with propagation."""
+    if not memory:
+        raise HTTPException(status_code=503, detail="Memory not initialized")
+
+    try:
+        results = memory.query(
+            query_text=request.query_text,
+            top_k=request.top_k,
+            propagation_depth=request.propagation_depth,
+            min_similarity_threshold=request.min_similarity_threshold,
+            candidate_multiplier=request.candidate_multiplier
+        )
+
+        return [
+            NodeResponse(
+                id=node.id,
+                text=node.text,
+                role=node.role.value,
+                activation=node.activation,
+                confidence=node.confidence,
+                neighbors=list(node.neighbors.keys())
+            )
+            for node in results
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/query/simulation", response_model=SimulationResponse)
+async def query_simulation(request: QueryRequest):
+    """Query with step-by-step simulation for animation."""
+    if not memory:
+        raise HTTPException(status_code=503, detail="Memory not initialized")
+
+    try:
+        result = memory.query_simulation(
+            query_text=request.query_text,
+            top_k=request.top_k,
+            propagation_depth=request.propagation_depth,
+            min_similarity_threshold=request.min_similarity_threshold,
+            candidate_multiplier=request.candidate_multiplier,
+            decay_per_hop=request.decay_per_hop
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/nodes")
+async def clear_memory():
+    """Clear all nodes from memory."""
+    if not memory:
+        raise HTTPException(status_code=503, detail="Memory not initialized")
+
+    try:
+        memory.graph = CognitiveGraph()
+        return {"message": "Memory cleared"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
