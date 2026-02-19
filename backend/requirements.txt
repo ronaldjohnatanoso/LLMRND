@@ -3,8 +3,11 @@ uvicorn[standard]==0.32.0
 pydantic==2.9.0
 python-dotenv==1.0.0
 
-# CogMemory dependencies
+# CogMemory dependencies (for Nomic API)
 lancedb==0.14.0
 numpy==1.26.4
-sentence-transformers==3.0.1
 requests==2.31.0
+
+# Optional: For local embeddings (uncomment if USE_LOCAL_EMBEDDINGS=true)
+# sentence-transformers==3.0.1
+# torch>=2.0.0
