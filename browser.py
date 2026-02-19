@@ -659,7 +659,7 @@ def main():
             with col1:
                 view_mode = st.radio(
                     "View Mode",
-                    ["📊 Compact Graph", "📄 Detailed Tree", "🎬 Animated", "🌳 Visual Graph"],
+                    ["🌳 Visual Graph", "📊 Compact Graph", "📄 Detailed Tree", "🎬 Animated"],
                     horizontal=True,
                     label_visibility="collapsed"
                 )
@@ -1495,11 +1495,13 @@ def main():
                     <text x="725" y="{legend_y + 12}" text-anchor="middle" fill="#666666" font-size="8">Strong</text>
                 ''')
 
-                # Combine SVG
+                # Combine SVG with proper HTML wrapper
                 svg_html = f'''
-                    <svg width="100%" height="{svg_height}" viewBox="0 0 {svg_width} {svg_height}" xmlns="http://www.w3.org/2000/svg">
+                <div style="width:100%;height:{svg_height}px;overflow:hidden;border-radius:8px;background:#1a1a2e;">
+                    <svg width="100%" height="100%" viewBox="0 0 {svg_width} {svg_height}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
                         {''.join(svg_elements)}
                     </svg>
+                </div>
                 '''
 
                 st.markdown(svg_html, unsafe_allow_html=True)
