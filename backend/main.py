@@ -9,11 +9,18 @@ import sys
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Get the backend directory and parent directory
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(BACKEND_DIR)
+
+# Load environment variables from multiple locations (in order of priority)
+# 1. backend/.env (local override)
+# 2. parent .env (shared config)
+load_dotenv(os.path.join(BACKEND_DIR, '.env'))
+load_dotenv(os.path.join(PARENT_DIR, '.env'))
 
 # Add parent directory to path to import cog_memory
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, PARENT_DIR)
 
 from cog_memory.query_interface import CognitiveMemory
 from cog_memory.cognitive_graph import NodeRole
