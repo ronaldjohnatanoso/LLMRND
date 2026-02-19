@@ -136,18 +136,52 @@ In-memory sparse graph with activation propagation:
 Node.neighbors: {neighbor_id: weight}
 ```
 
-**Activation Propagation (BFS):**
+**Activation Propagation (BFS with Stability):**
 ```
-propagate_activation(start_node, depth=2):
+propagate_activation(start_nodes, max_hops=5, stability_epsilon=0.001):
     queue = [(start_node, 0)]
-    while queue:
-        node, current_depth = queue.pop()
-        if current_depth >= depth: continue
-        for neighbor_id, weight in node.neighbors:
-            role_boost = ROLE_BOOSTS[(node.role, neighbor.role)]
-            neighbor.activation += node.activation * weight * role_boost
-            queue.append((neighbor, current_depth + 1))
+    previous_activations = {}
+    visited_edges = set()  # Track (parent, child) to prevent cycles
+
+    for hop in range(max_hops):
+        current_activations = {n.id: n.activation for n in active_nodes}
+
+        while queue:
+            node, current_depth = queue.popleft()
+
+            # Only propagate from sufficiently activated nodes (active frontier)
+            if node.activation < min_delta:
+                continue
+
+            for neighbor_id, weight in node.neighbors:
+                edge = (node.id, neighbor_id)
+                if edge in visited_edges:
+                    continue  # Prevent cycles
+                visited_edges.add(edge)
+
+                # Per-edge decay: activation decays with each hop
+                decay_factor = DECAY_PER_HOP ** current_depth
+                role_boost = ROLE_BOOSTS[(node.role, neighbor.role)]
+                delta = node.activation * weight * role_boost * decay_factor
+
+                # Sum contributions from multiple parents
+                neighbor.activation += delta
+
+                queue.append((neighbor, current_depth + 1))
+
+        # Check stability: stop if max delta < epsilon
+        max_delta = max(abs(current - previous) for current, previous in
+                       zip(current_activations.values(), previous_activations.values()))
+        if max_delta < stability_epsilon:
+            break  # System stabilized
 ```
+
+**Key Improvements:**
+- **Active Frontier**: Only nodes with activation > `min_delta` can propagate
+- **Per-Edge Decay**: Decay applied at each hop (path-based)
+- **Stability-Based Stopping**: Stop when activation changes < epsilon
+- **Cycle Prevention**: Track visited edges (not just nodes)
+- **Multi-Parent Summation**: Nodes receive summed contributions from all parents
 
 **Role Boost Matrix:**
 ```python
@@ -159,6 +193,16 @@ ROLE_BOOSTS = {
     # ... more rules
 }
 ```
+
+**Propagation Parameters:**
+```python
+MIN_DELTA = 0.01              # Minimum activation to propagate
+DECAY_PER_HOP = 0.7           # Retain 70% per hop
+STABILITY_EPSILON = 0.001     # Max delta to consider stable
+MAX_HOPS = 5                  # Hard safety limit
+```
+
+See [PROPAGATION_PLAN.md](PROPAGATION_PLAN.md) for detailed implementation roadmap.
 
 ### 5. Deduplication Engine
 
@@ -287,15 +331,25 @@ def check_conflict(node1, node2, similarity):
        ├─────────────┬──────────────────┐
        ▼            ▼                  ▼
 ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│ activate_goals│ │ propagate()  │ │get_top_active│
-│  (optional)  │ │  (BFS)       │ │   (sorted)   │
-└──────────────┘ └──────────────┘ └──────┬───────┘
-                                             │
-                                             ▼
-                                      ┌──────────────┐
-                                      │ List[Node]   │
-                                      │  (results)   │
-                                      └──────────────┘
+│ activate_goals│ │ propagate()  │ │Combine Scores│
+│  (optional)  │ │  (BFS+Stable)│ │ activation + │
+└──────────────┘ └──────────────┘ │ similarity   │
+                               └──────┬───────┘
+                                      │
+                                      ▼
+                               ┌──────────────┐
+                               │ List[Node]   │
+                               │  (results)   │
+                               └──────────────┘
+```
+
+**Combined Scoring:**
+```python
+# Mitigates top-K poisoning from early hops
+final_score = (
+    activation_weight * node.activation +
+    similarity_weight * cosine_similarity(query, node.embedding)
+)
 ```
 
 ## LanceDB Schema
@@ -336,46 +390,120 @@ For 10,000 nodes:
 
 ## Activation Propagation Algorithm
 
-**Breadth-First Search with Role Modulation:**
+**Improved BFS with Active Frontier, Per-Edge Decay, and Stability-Based Stopping:**
 
 ```python
-def propagate_activation(start_node, depth=2):
-    queue = deque([(start_node.id, 0)])
-    visited = set()
+def propagate_activation(
+    start_nodes: list[Node],
+    max_hops: int = 5,
+    min_delta: float = 0.01,
+    decay_per_hop: float = 0.7,
+    stability_epsilon: float = 0.001
+) -> bool:
+    """
+    Returns True if stabilized before max_hops
 
-    while queue:
-        node_id, current_depth = queue.popleft()
+    Key improvements:
+    - Active frontier: Only propagate from nodes above min_delta
+    - Per-edge decay: Decay applied at each hop (path-based)
+    - Stability check: Stop when max delta < epsilon
+    - Edge tracking: Track (parent, child) edges to prevent cycles
+    - Multi-parent sum: Contributions from multiple parents are summed
+    """
+    queue = deque()
+    visited_edges = set()
 
-        if current_depth >= depth or node_id in visited:
-            continue
+    # Initialize queue with start nodes
+    for node in start_nodes:
+        queue.append((node.id, 0, None))  # (node_id, hop, parent_id)
 
-        visited.add(node_id)
-        node = graph.get_node(node_id)
+    for hop in range(max_hops):
+        # Record current activations for stability check
+        current_activations = {
+            n.id: n.activation for n in graph.get_active_nodes()
+            if n.activation > min_delta
+        }
 
-        if node.activation < threshold:
-            continue
+        # Process all nodes at current hop
+        for _ in range(len(queue)):
+            node_id, current_hop, parent_id = queue.popleft()
 
-        for neighbor_id, weight in node.neighbors:
-            neighbor = graph.get_node(neighbor_id)
+            node = graph.get_node(node_id)
 
-            # Role-based modulation
-            boost = ROLE_BOOSTS.get(
-                (node.role, neighbor.role),
-                default_boost
-            )
+            # Active frontier: skip weakly activated nodes
+            if node.activation < min_delta:
+                continue
 
-            # Apply activation
-            delta = node.activation * weight * boost
-            neighbor.update_activation(delta)
+            # Propagate to neighbors
+            for neighbor_id, weight in node.neighbors.items():
+                edge = (node_id, neighbor_id)
+                if edge in visited_edges:
+                    continue  # Prevent cycles
 
-            # Continue propagation
-            if current_depth + 1 < depth:
-                queue.append((neighbor_id, current_depth + 1))
+                visited_edges.add(edge)
+                neighbor = graph.get_node(neighbor_id)
+
+                # Role-based modulation
+                boost = ROLE_BOOSTS.get(
+                    (node.role, neighbor.role),
+                    1.0  # default
+                )
+
+                # Per-edge decay (path-based)
+                decay_factor = decay_per_hop ** current_hop
+                delta = node.activation * weight * boost * decay_factor
+
+                # Sum contributions from multiple parents
+                neighbor.activation += delta
+
+                queue.append((neighbor_id, current_hop + 1, node_id))
+
+        # Check stability: stop if max delta < epsilon
+        max_delta = 0
+        for node_id, old_activation in current_activations.items():
+            new_activation = graph.get_node(node_id).activation
+            delta = abs(new_activation - old_activation)
+            max_delta = max(max_delta, delta)
+
+        if max_delta < stability_epsilon:
+            return True  # System stabilized
+
+    return False  # Reached max_hops
 ```
+
+**Key Concepts:**
+- **Stability vs Activation**: Stability tracks changes between hops; activation determines relevance
+- **Active Frontier**: Only nodes above `min_delta` can propagate (efficiency + control)
+- **Per-Edge Decay**: Prevents runaway loops and naturally prioritizes near nodes
+- **Edge-Based Tracking**: Allows multi-parent nodes while preventing cycles
+
+**Design Note: SUM vs MAX for Multiple Parents**
+
+When a node receives activation from multiple parents, the current implementation uses **SUM accumulation**:
+```python
+neighbor.activation += delta  # Sums contributions from all parents
+```
+
+**Alternative approach (from theory):** Use **MAX** to preserve only the strongest signal:
+```python
+neighbor.activation = max(neighbor.activation, delta)
+```
+
+**Trade-offs:**
+- **SUM**: Reinforces nodes that receive multiple weak signals (more inclusive)
+- **MAX**: Preserves only the strongest path (prevents overcounting)
+
+Current implementation uses SUM for more inclusive retrieval, but this can be tuned based on use case.
 
 **Complexity:**
 - Time: O(V + E) where V = visited nodes, E = traversed edges
 - Space: O(depth * branching_factor) for queue
+
+> **See [PROPAGATION_PLAN.md](PROPAGATION_PLAN.md)** for complete implementation roadmap including:
+> - Directed edges with optional backward propagation
+> - Combined activation + similarity scoring for top-K
+> - Two-phase retrieval for mitigating early-hop dominance
+> - Parameter reference and tuning guide
 
 ## Usage Patterns
 
@@ -413,6 +541,17 @@ memory.apply_decay()
 ```
 
 ## Future Extensions
+
+### Propagation Improvements (See [PROPAGATION_PLAN.md](PROPAGATION_PLAN.md))
+
+1. **Stability-Based Stopping**: Stop propagation when activation stabilizes (delta < epsilon)
+2. **Per-Edge Decay**: Path-based decay applied at each hop
+3. **Active Frontier**: Only propagate from nodes above threshold
+4. **Directed Edges**: Encode causal relationships with optional backward propagation
+5. **Combined Scoring**: Weighted mix of activation + similarity for top-K retrieval
+6. **Two-Phase Retrieval**: BFS candidate identification + similarity refinement
+
+### System Extensions
 
 1. **Temporal Indexing:** Track timestamps for time-based decay
 2. **Conflict Resolution:** Automated merging of conflicting nodes

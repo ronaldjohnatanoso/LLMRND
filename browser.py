@@ -200,7 +200,7 @@ def main():
         "📖 Details",
         "🧠 Propagation Query",
         "🕸️ 3D Graph",
-        "📊 2D Graph"
+        "🎨 Canvas (vis.js)"
     ])
 
     with tab1:
@@ -659,7 +659,7 @@ def main():
             with col1:
                 view_mode = st.radio(
                     "View Mode",
-                    ["📊 Compact Graph", "📄 Detailed Tree"],
+                    ["📊 Compact Graph", "📄 Detailed Tree", "🎬 Animated"],
                     horizontal=True,
                     label_visibility="collapsed"
                 )
@@ -845,7 +845,7 @@ def main():
                     st.markdown("**More:**")
                     st.markdown("🟣 CONSTRAINT | 🟠 DECISION | 🟡 CONDITIONAL")
 
-            else:
+            elif view_mode == "📄 Detailed Tree":
                 # DETAILED MODE - Using HTML/CSS with expandable sections
                 st.subheader("🌳 Propagation Tree (Detailed)")
 
@@ -979,6 +979,130 @@ def main():
                 st.markdown("</div>", unsafe_allow_html=True)
 
                 st.caption("💡 Click ▶ to expand nodes and see details. Layer = hops from query.")
+
+            elif view_mode == "🎬 Animated":
+                # ANIMATED MODE - Step-by-step propagation
+                st.subheader("🎬 Animated Propagation")
+
+                # Run simulation
+                if "sim_data" not in st.session_state or st.session_state.sim_data.get("query") != query:
+                    with st.spinner("Running simulation..."):
+                        sim_data = memory.query_simulation(
+                            query_text=query,
+                            top_k=total_k,
+                            propagation_depth=depth,
+                            min_similarity_threshold=min_similarity,
+                            candidate_multiplier=candidate_multiplier,
+                            decay_per_hop=0.7  # Default decay rate
+                        )
+                        st.session_state.sim_data = sim_data
+                        st.session_state.anim_step = 0
+
+                sim_data = st.session_state.sim_data
+                total_steps = sim_data["total_steps"]
+
+                # Navigation controls - using number_input for instant navigation
+                col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
+                with col1:
+                    if st.button("⏮️", key="anim_first"):
+                        st.session_state.anim_step = 0
+                with col2:
+                    if st.button("◀️", key="anim_prev"):
+                        if st.session_state.anim_step > 0:
+                            st.session_state.anim_step -= 1
+                with col3:
+                    # Use number_input for instant slider-like navigation
+                    step = st.number_input(
+                        "Step",
+                        min_value=0,
+                        max_value=total_steps - 1,
+                        value=st.session_state.anim_step,
+                        step=1,
+                        label_visibility="collapsed",
+                        key="anim_step_input",
+                        format="%d"
+                    )
+                    # Sync session state
+                    st.session_state.anim_step = int(step)
+                    st.markdown(f"<div style='text-align:center;'>Step {step + 1}/{total_steps}</div>", unsafe_allow_html=True)
+                with col4:
+                    if st.button("▶️", key="anim_next"):
+                        if st.session_state.anim_step < total_steps - 1:
+                            st.session_state.anim_step += 1
+                with col5:
+                    if st.button("⏭️", key="anim_last"):
+                        st.session_state.anim_step = total_steps - 1
+
+                # Manual control info
+                st.caption("💡 Use buttons or drag the slider to navigate instantly")
+
+                # Current step display
+                step_data = sim_data["timeline"][step]
+                step_type = step_data["type"]
+
+                # Status indicator
+                status_colors = {
+                    "search": "#6c757d", "search_results": "#17a2b8", "layer_1": "#28a745",
+                    "hop_start": "#fd7e14", "propagation": "#007bff", "gate_1_fail": "#dc3545",
+                    "gate_2_fail": "#dc3545", "filtered": "#6c757d", "complete": "#28a745",
+                }
+                status_color = status_colors.get(step_type, "#6c757d")
+
+                st.markdown(
+                    f"<div style='background:{status_color};color:white;padding:12px;border-radius:6px;margin-bottom:16px;'>"
+                    f"<strong>Step {step + 1}:</strong> {step_data['message']}</div>",
+                    unsafe_allow_html=True
+                )
+
+                # Display step-specific content
+                if step_type == "search":
+                    st.info("🔍 Generating embeddings and searching...")
+
+                elif step_type == "search_results":
+                    candidates = step_data.get("candidates", [])
+                    st.write(f"**Found {len(candidates)} candidates**")
+                    for c in candidates[:5]:
+                        st.write(f"- {c['text'][:50]}... (sim: {c['similarity']:.3f})")
+
+                elif step_type == "layer_1":
+                    st.success("✅ Layer 1: Direct matches activated")
+                    for node_data in step_data.get("nodes_data", []):
+                        role_emoji = {"FACT": "🔵", "OBSERVATION": "🟢", "GOAL": "🔴", "CONSTRAINT": "🟣", "DECISION": "🟠"}
+                        emoji = role_emoji.get(node_data["role"], "⚪")
+                        st.markdown(f"{emoji} **{node_data['role']}** - Activation: {node_data['activation']:.3f}")
+
+                elif step_type == "propagation":
+                    st.write(f"🌊 **Hop {step_data.get('hop', 0)}** - Propagating activation")
+                    parent_id = step_data.get("parent_id", "")[:8]
+                    child_id = step_data.get("child_id", "")[:8]
+                    delta = step_data.get("delta", 0)
+                    st.write(f"From: {parent_id}... → To: {child_id}...")
+                    st.write(f"Signal strength: Δ{delta:.4f}")
+                    if step_data.get("newly_activated"):
+                        st.success("🆕 Node activated!")
+                    else:
+                        st.caption("Node already activated")
+
+                elif step_type == "gate_1_fail":
+                    st.warning(f"🚫 Gate 1: Signal too weak (Δ {step_data.get('delta', 0):.3f} < {step_data.get('threshold', 0)})")
+
+                elif step_type == "gate_2_fail":
+                    st.warning(f"🚫 Gate 2: Node too weak to propagate further (activation: {step_data.get('activation', 0):.3f})")
+
+                elif step_type == "complete":
+                    st.success("✨ Propagation complete!")
+                    final = step_data.get("final_states", [])
+                    st.write(f"**Total activated:** {len(final)}")
+                    for i, state in enumerate(final[:10], 1):
+                        st.write(f"{i}. **{state['role']}** - Act: {state['activation']:.3f} - {state['text'][:40]}...")
+
+                # Progress bar
+                progress = (step + 1) / total_steps
+                st.markdown(
+                    f"<div style='width:100%;background:#e9ecef;height:8px;border-radius:4px;margin-top:16px;'>"
+                    f"<div style='width:{progress*100}%;background:{status_color};height:100%;border-radius:4px;'></div></div>",
+                    unsafe_allow_html=True
+                )
 
         else:
             st.info("Enter a query above to see propagation results")
@@ -1163,165 +1287,8 @@ def main():
             st.info("No nodes in database yet. Ingest some text first!")
 
     with tab6:
-        st.subheader("📊 2D Network Graph")
-
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            min_activation_2d = st.slider(
-                "Min Activation",
-                0.0, 1.0, 0.0, 0.1,
-                help="Show only nodes above this activation",
-                key="min_act_2d"
-            )
-        with col2:
-            show_labels_2d = st.checkbox("Show Labels", value=True, key="labels_2d")
-        with col3:
-            layout_2d = st.selectbox("Layout", ["Spring", "Circular", "Kamada-Kawai", "Random"], key="layout_2d")
-
-        if not df.empty:
-            with st.spinner("Generating 2D graph..."):
-                # Filter by activation
-                filtered_df = df[df["activation"] >= min_activation_2d].copy()
-
-                if len(filtered_df) == 0:
-                    st.warning("No nodes match the activation filter")
-                else:
-                    # Create NetworkX graph
-                    G = nx.Graph()
-
-                    # Color map by role
-                    role_colors = {
-                        "fact": "rgb(52, 152, 219)",           # blue
-                        "observation": "rgb(46, 204, 113)",     # green
-                        "goal": "rgb(231, 76, 60)",           # red
-                        "constraint": "rgb(155, 89, 182)",     # purple
-                        "decision": "rgb(243, 156, 18)",       # orange
-                        "conditional_dependency": "rgb(26, 188, 156)",  # teal
-                    }
-
-                    # Add nodes
-                    for _, row in filtered_df.iterrows():
-                        G.add_node(
-                            row["id"],
-                            text=row["text"],
-                            role=row["role"],
-                            confidence=row["confidence"],
-                            activation=row["activation"],
-                            color=role_colors.get(row["role"], "rgb(149, 165, 166)"),
-                        )
-
-                    # Add edges from neighbors
-                    for _, row in filtered_df.iterrows():
-                        neighbors = row.get("neighbors", {})
-                        if neighbors:
-                            for neighbor_id, weight in neighbors.items():
-                                if neighbor_id in G.nodes:
-                                    G.add_edge(row["id"], neighbor_id, weight=weight)
-
-                    # 2D layout
-                    if layout_2d == "Spring":
-                        pos = nx.spring_layout(G, k=2, iterations=50, seed=42)
-                    elif layout_2d == "Circular":
-                        pos = nx.circular_layout(G)
-                    elif layout_2d == "Kamada-Kawai":
-                        pos = nx.kamada_kawai_layout(G)
-                    else:  # Random
-                        pos = nx.random_layout(G, seed=42)
-
-                    # Extract edge coordinates
-                    edge_x = []
-                    edge_y = []
-
-                    for edge in G.edges(data=True):
-                        x0, y0 = pos[edge[0]]
-                        x1, y1 = pos[edge[1]]
-                        edge_x.extend([x0, x1, None])
-                        edge_y.extend([y0, y1, None])
-
-                    # Extract node coordinates and attributes
-                    node_x = []
-                    node_y = []
-                    node_text = []
-                    node_colors = []
-                    node_sizes = []
-
-                    for node in G.nodes():
-                        x, y = pos[node]
-                        node_x.append(x)
-                        node_y.append(y)
-
-                        node_data = G.nodes[node]
-                        activation = node_data.get("activation", 0)
-                        size = 10 + (activation * 50)
-                        node_sizes.append(size)
-                        node_colors.append(node_data.get("color", "rgb(149, 165, 166)"))
-
-                        if show_labels_2d:
-                            node_text.append(
-                                f"<b>{node_data.get('role', 'unknown').upper()}</b><br>"
-                                f"{node_data.get('text', '')[:50]}...<br>"
-                                f"Conf: {node_data.get('confidence', 0):.2f}<br>"
-                                f"Act: {activation:.3f}"
-                            )
-                        else:
-                            node_text.append("")
-
-                    # Create figure
-                    fig = go.Figure()
-
-                    # Add edges
-                    fig.add_trace(go.Scatter(
-                        x=edge_x, y=edge_y,
-                        mode='lines',
-                        line=dict(color='rgba(255, 255, 255, 0.3)', width=1),
-                        hoverinfo='none',
-                        name='Edges'
-                    ))
-
-                    # Add nodes
-                    fig.add_trace(go.Scatter(
-                        x=node_x, y=node_y,
-                        mode='markers+text' if show_labels_2d else 'markers',
-                        marker=dict(
-                            size=node_sizes,
-                            color=node_colors,
-                            opacity=0.8,
-                            line=dict(width=2, color='white')
-                        ),
-                        text=[f"<b>{G.nodes[n]['role']}</b>" for n in G.nodes()] if show_labels_2d else [],
-                        textposition='top center',
-                        textfont=dict(size=10, color='white'),
-                        hovertext=node_text,
-                        hovertemplate='<b>%{hovertext}</b><extra></extra>',
-                        name='Nodes'
-                    ))
-
-                    # Update layout
-                    fig.update_layout(
-                        showlegend=False,
-                        xaxis=dict(showgrid=False, showticklabels=False, visible=False),
-                        yaxis=dict(showgrid=False, showticklabels=False, visible=False),
-                        plot_bgcolor='rgba(30, 30, 30, 1)',
-                        paper_bgcolor='rgba(30, 30, 30, 1)',
-                        margin=dict(l=20, r=20, b=20, t=20),
-                        height=600,
-                        hovermode='closest'
-                    )
-
-                    st.caption("🖱️ Hover for details • Scroll to zoom")
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    # Legend
-                    st.subheader("Legend")
-                    cols = st.columns(len(role_colors))
-                    for col, (role, color) in zip(cols, role_colors.items()):
-                        with col:
-                            st.markdown(
-                                f'<div style="background-color: {color}; padding: 10px; border-radius: 5px; text-align: center; font-weight: bold; color: white;">{role.replace("_", " ").title()}</div>',
-                                unsafe_allow_html=True,
-                            )
-        else:
-            st.info("No nodes in database yet. Ingest some text first!")
+        st.subheader("🎨 Animated Canvas (vis.js)")
+        st.info("Canvas animation coming soon - for now use the Propagation Query tab with Compact/Detailed views")
 
 
 if __name__ == "__main__":

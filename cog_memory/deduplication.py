@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from cog_memory.node import Node
 
 if TYPE_CHECKING:
@@ -24,15 +26,19 @@ class DeduplicationEngine:
         self,
         similarity_threshold: float = 0.85,
         top_k: int = 5,
+        blend_alpha: float = 0.3,
     ) -> None:
         """Initialize the deduplication engine.
 
         Args:
             similarity_threshold: Minimum similarity to trigger merge
             top_k: Number of similar nodes to check
+            blend_alpha: Blending factor for embedding updates (0-1)
+                       Lower = more conservative (preserves old embedding)
         """
         self.similarity_threshold = similarity_threshold
         self.top_k = top_k
+        self.blend_alpha = blend_alpha
 
     def find_similar(
         self,
@@ -89,12 +95,17 @@ class DeduplicationEngine:
         self,
         existing: dict,
         new: Node,
+        new_embedding: list[float] | None = None,
     ) -> dict:
         """Merge a new node into an existing node.
+
+        Uses blending formula to update embedding:
+        V_old = normalize((1 - α) × V_old + α × V_new)
 
         Args:
             existing: Existing node record
             new: New node to merge
+            new_embedding: Embedding of the new node (optional)
 
         Returns:
             Updated node record
@@ -107,6 +118,21 @@ class DeduplicationEngine:
 
         # Add activation
         existing["activation"] = max(existing["activation"], new.activation)
+
+        # Blend embeddings if provided
+        if new_embedding is not None and "vector" in existing:
+            old_embedding = np.array(existing["vector"])
+            new_emb_array = np.array(new_embedding)
+
+            # Blending formula: V_old = normalize((1 - α) × V_old + α × V_new)
+            blended = (1 - self.blend_alpha) * old_embedding + self.blend_alpha * new_emb_array
+
+            # Normalize to maintain unit length
+            norm = np.linalg.norm(blended)
+            if norm > 0:
+                blended = blended / norm
+
+            existing["vector"] = blended.tolist()
 
         return existing
 

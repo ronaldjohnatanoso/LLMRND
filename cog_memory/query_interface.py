@@ -120,12 +120,17 @@ class CognitiveMemory:
                 # Merge with existing node
                 existing_record = self.store.get_node(merge_with_id)
                 if existing_record:
-                    merged = self.deduplication.merge_nodes(existing_record, node)
+                    merged = self.deduplication.merge_nodes(
+                        existing_record, node, new_embedding=embedding
+                    )
                     self.store.update_node(merge_with_id, merged)
                     # Update graph
                     graph_node = self.graph.get_node(merge_with_id)
                     if graph_node:
                         graph_node.confidence = merged["confidence"]
+                        # Update embedding in graph node too
+                        if "vector" in merged:
+                            graph_node.embedding = merged["vector"]
                 continue
 
             # Add new node (neighbors already populated by edge creation)
@@ -153,6 +158,7 @@ class CognitiveMemory:
         propagation_depth: int = 3,
         min_similarity_threshold: float = 0.55,
         candidate_multiplier: int = 2,
+        decay_per_hop: float = 0.7,
     ) -> dict:
         """Query with detailed debug information for testing.
 
@@ -162,6 +168,7 @@ class CognitiveMemory:
             propagation_depth: How many hops to propagate (default: 3 for testing)
             min_similarity_threshold: Minimum similarity for Layer 1 matches
             candidate_multiplier: Fetch multiplier for vector search (default: 2)
+            decay_per_hop: Retention rate per hop (default: 0.7 = 70% per hop)
 
         Returns:
             Dictionary with:
@@ -317,7 +324,282 @@ class CognitiveMemory:
                 "min_delta": self.graph.min_delta,
                 "activation_threshold": self.graph.activation_threshold,
                 "propagation_depth": propagation_depth,
+                "decay_per_hop": decay_per_hop,
             }
+        }
+
+    def query_simulation(
+        self,
+        query_text: str,
+        top_k: int = 10,
+        propagation_depth: int = 3,
+        min_similarity_threshold: float = 0.55,
+        candidate_multiplier: int = 2,
+        decay_per_hop: float = 0.7,
+    ) -> dict:
+        """Query with step-by-step propagation states for animation.
+
+        Returns a timeline of states for visual simulation of propagation.
+
+        Args:
+            query_text: Query text
+            top_k: Number of results to return
+            propagation_depth: How many hops to propagate
+            min_similarity_threshold: Minimum similarity for Layer 1 matches
+            candidate_multiplier: Fetch multiplier for vector search
+            decay_per_hop: Retention rate per hop
+
+        Returns:
+            Dictionary with timeline of states for animation
+        """
+        from collections import deque
+
+        # Reset activations
+        self.graph.reset_all_activations()
+
+        # Generate query embedding
+        query_embedding = self.embedding_manager.generate_embedding(query_text)
+
+        # Timeline stores each state for animation
+        timeline = []
+        step_id = 0
+
+        # STEP 1: Vector search
+        timeline.append({
+            "step": step_id,
+            "type": "search",
+            "message": f"🔍 Searching for nodes similar to: '{query_text}'",
+            "query_text": query_text,
+            "nodes_activated": [],
+        })
+        step_id += 1
+
+        # Query similar nodes
+        similar_records = self.store.query_similar(
+            embedding=query_embedding,
+            k=top_k * candidate_multiplier,
+        )
+
+        timeline.append({
+            "step": step_id,
+            "type": "search_results",
+            "message": f"📊 Found {len(similar_records)} candidates, filtering by similarity (≥ {min_similarity_threshold})",
+            "candidates": [
+                {
+                    "id": r["id"],
+                    "text": r.get("text", "")[:50] + "..." if len(r.get("text", "")) > 50 else r.get("text", ""),
+                    "similarity": round(r.get("similarity", 0), 3),
+                }
+                for r in similar_records
+            ],
+            "nodes_activated": [],
+        })
+        step_id += 1
+
+        # STEP 2: Activate Layer 1 (direct matches)
+        activated_ids = set()
+        layer_1_nodes = []
+
+        for record in similar_records:
+            node_id = record["id"]
+            similarity = record.get("similarity", 0.5)
+
+            if similarity < min_similarity_threshold and len(activated_ids) >= top_k:
+                continue
+
+            node = self.graph.get_node(node_id)
+            if node:
+                node.similarity_to_query = similarity
+                node.activation = similarity
+                layer_1_nodes.append({
+                    "id": node.id,
+                    "text": node.text,
+                    "role": node.role.value,
+                    "similarity_to_query": similarity,
+                    "activation": similarity,
+                })
+                activated_ids.add(node_id)
+
+            if len(activated_ids) >= top_k:
+                break
+
+        # Clear similarity_to_query for non-activated nodes
+        all_node_ids = {r["id"] for r in similar_records}
+        for node_id in all_node_ids - activated_ids:
+            node = self.graph.get_node(node_id)
+            if node:
+                node.similarity_to_query = 0.0
+
+        timeline.append({
+            "step": step_id,
+            "type": "layer_1",
+            "message": f"✅ Layer 1: Activated {len(activated_ids)} direct matches (similarity ≥ {min_similarity_threshold})",
+            "nodes_activated": list(activated_ids),
+            "nodes_data": layer_1_nodes,
+        })
+        step_id += 1
+
+        # STEP 3-N: Propagation with step-by-step tracking
+        visited_edges = set()
+        queue = deque([(node_id, 0, None) for node_id in activated_ids])  # (node_id, hop, parent_id)
+        processed_in_hop = {0: list(activated_ids)}
+
+        current_hop = 0
+        while queue:
+            node_id, hop, parent_id = queue.popleft()
+
+            if hop >= propagation_depth:
+                continue
+
+            # New hop starting?
+            if hop > current_hop:
+                current_hop = hop
+                timeline.append({
+                    "step": step_id,
+                    "type": "hop_start",
+                    "message": f"🚶 Hop {hop}: Exploring neighbors of activated nodes",
+                    "hop": hop,
+                    "nodes_activated": list(activated_ids),
+                })
+                step_id += 1
+
+            node = self.graph.get_node(node_id)
+            if not node or node.activation < self.graph.activation_threshold:
+                # Track filtered nodes
+                if node:
+                    timeline.append({
+                        "step": step_id,
+                        "type": "filtered",
+                        "message": f"🚫 Node '{node.text[:30]}...' filtered (activation {node.activation:.3f} < threshold {self.graph.activation_threshold})",
+                        "node_id": node_id,
+                        "reason": "activation_threshold",
+                        "nodes_activated": list(activated_ids),
+                    })
+                    step_id += 1
+                continue
+
+            # Process each neighbor
+            neighbors_processed = 0
+            for neighbor_id, weight in node.neighbors.items():
+                edge = (node_id, neighbor_id)
+                if edge in visited_edges:
+                    continue
+
+                neighbor = self.graph.get_node(neighbor_id)
+                if not neighbor:
+                    continue
+
+                # Calculate role boost
+                role_boost = self.graph.default_boost
+
+                # Calculate activation with decay
+                base_similarity = node.similarity_to_query if node.similarity_to_query > 0 else node.activation
+                decay_factor = decay_per_hop ** hop
+                activation_delta = base_similarity * weight * role_boost * decay_factor
+
+                # Gate 1: Min delta check
+                if activation_delta < self.graph.min_delta:
+                    timeline.append({
+                        "step": step_id,
+                        "type": "gate_1_fail",
+                        "message": f"❌ Gate 1: Signal too weak ({activation_delta:.3f} < {self.graph.min_delta})",
+                        "parent_id": node_id,
+                        "child_id": neighbor_id,
+                        "delta": activation_delta,
+                        "threshold": self.graph.min_delta,
+                        "nodes_activated": list(activated_ids),
+                    })
+                    step_id += 1
+                    continue
+
+                # Update activation
+                old_activation = neighbor.activation
+                neighbor.update_activation(activation_delta)
+                visited_edges.add(edge)
+                newly_activated = neighbor_id not in activated_ids
+
+                if newly_activated:
+                    activated_ids.add(neighbor_id)
+
+                timeline.append({
+                    "step": step_id,
+                    "type": "propagation",
+                    "message": f"⚡ {node.text[:25]}... → {neighbor.text[:25]}... (Δ={activation_delta:.3f}, boost={role_boost}×, decay={decay_factor:.2f})",
+                    "parent_id": node_id,
+                    "child_id": neighbor_id,
+                    "hop": hop + 1,
+                    "edge_weight": weight,
+                    "role_boost": role_boost,
+                    "decay_factor": decay_factor,
+                    "delta": activation_delta,
+                    "old_activation": old_activation,
+                    "new_activation": neighbor.activation,
+                    "newly_activated": newly_activated,
+                    "nodes_activated": list(activated_ids),
+                })
+                step_id += 1
+
+                neighbors_processed += 1
+
+                # Gate 2: Check if neighbor can continue propagating
+                can_propagate = (
+                    hop + 1 < propagation_depth
+                    and neighbor.activation >= self.graph.activation_threshold
+                )
+
+                if can_propagate:
+                    queue.append((neighbor_id, hop + 1, node_id))
+                elif neighbor.activation < self.graph.activation_threshold:
+                    timeline.append({
+                        "step": step_id,
+                        "type": "gate_2_fail",
+                        "message": f"🚫 Gate 2: '{neighbor.text[:30]}...' too weak to propagate ({neighbor.activation:.3f} < {self.graph.activation_threshold})",
+                        "node_id": neighbor_id,
+                        "activation": neighbor.activation,
+                        "threshold": self.graph.activation_threshold,
+                        "nodes_activated": list(activated_ids),
+                    })
+                    step_id += 1
+
+        # STEP FINAL: Summary
+        # Get final node states
+        final_states = []
+        for node_id in activated_ids:
+            node = self.graph.get_node(node_id)
+            if node:
+                final_states.append({
+                    "id": node.id,
+                    "text": node.text,
+                    "role": node.role.value,
+                    "activation": node.activation,
+                    "similarity_to_query": node.similarity_to_query,
+                    "layer": 1 if node.similarity_to_query > 0 else "propagated",
+                })
+
+        # Sort by activation
+        final_states.sort(key=lambda x: x["activation"], reverse=True)
+
+        timeline.append({
+            "step": step_id,
+            "type": "complete",
+            "message": f"✨ Propagation complete! {len(activated_ids)} nodes activated",
+            "total_activated": len(activated_ids),
+            "final_states": final_states[:top_k],
+            "nodes_activated": list(activated_ids),
+        })
+
+        return {
+            "query": query_text,
+            "timeline": timeline,
+            "total_steps": step_id + 1,
+            "final_states": final_states,
+            "settings": {
+                "min_delta": self.graph.min_delta,
+                "activation_threshold": self.graph.activation_threshold,
+                "propagation_depth": propagation_depth,
+                "decay_per_hop": decay_per_hop,
+                "min_similarity": min_similarity_threshold,
+            },
         }
 
     def query(
@@ -328,6 +610,7 @@ class CognitiveMemory:
         propagation_depth: int = 2,
         min_similarity_threshold: float = 0.55,
         candidate_multiplier: int = 2,
+        decay_per_hop: float = 0.7,
     ) -> list[Node]:
         """Query the cognitive memory system.
 
@@ -338,6 +621,7 @@ class CognitiveMemory:
             propagation_depth: How many hops to propagate activation (default: 2)
             min_similarity_threshold: Minimum similarity for Layer 1 direct matches (default: 0.55)
             candidate_multiplier: Fetch multiplier for vector search (default: 2)
+            decay_per_hop: Retention rate per hop (default: 0.7 = 70% per hop)
 
         Returns:
             List of relevant nodes
@@ -384,11 +668,11 @@ class CognitiveMemory:
 
         # Propagate activation through the graph (multi-hop reasoning)
         for node_id in activated_ids:
-            self.graph.propagate_activation(node_id, depth=propagation_depth)
+            self.graph.propagate_activation(node_id, depth=propagation_depth, decay_per_hop=decay_per_hop)
 
         # Activate goals if specified
         if activate_goals:
-            self.graph.activate_goals(activate_goals)
+            self.graph.activate_goals(activate_goals, decay_per_hop=decay_per_hop)
 
         # Return top activated nodes
         results = self.graph.get_top_activated(top_k)

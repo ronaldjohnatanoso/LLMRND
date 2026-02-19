@@ -121,14 +121,20 @@ class CognitiveGraph:
         if node:
             node.activation = max(0.0, min(1.0, activation))
 
-    def propagate_activation(self, start_node_id: str, depth: int | None = None) -> None:
+    def propagate_activation(
+        self,
+        start_node_id: str,
+        depth: int | None = None,
+        decay_per_hop: float = 0.7,
+    ) -> None:
         """Propagate activation from a starting node through the graph.
 
-        Uses BFS traversal with role-based boost modulation.
+        Uses BFS traversal with role-based boost modulation and per-hop decay.
 
         Args:
             start_node_id: ID of the node to start propagation from
             depth: Maximum propagation depth (uses instance default if None)
+            decay_per_hop: Retention rate per hop (e.g., 0.7 = 70% retained per hop)
         """
         if depth is None:
             depth = self.propagation_depth
@@ -166,8 +172,17 @@ class CognitiveGraph:
 
                 # Use parent's similarity_to_query (not activation) for propagation
                 # This prevents stale activation values from affecting calculations
-                base_similarity = node.similarity_to_query if node.similarity_to_query > 0 else node.activation
-                activation_delta = base_similarity * weight * role_boost
+                base_similarity = (
+                    node.similarity_to_query
+                    if node.similarity_to_query > 0
+                    else node.activation
+                )
+
+                # Per-hop decay: activation decays with each hop from source
+                decay_factor = decay_per_hop ** current_depth
+                activation_delta = (
+                    base_similarity * weight * role_boost * decay_factor
+                )
 
                 # Only propagate significant signals (above min_delta threshold)
                 if activation_delta < self.min_delta:
@@ -176,21 +191,27 @@ class CognitiveGraph:
                 neighbor.update_activation(activation_delta)
 
                 # Add to queue if not at max depth AND neighbor will continue propagating
-                if current_depth + 1 < depth and neighbor.activation >= self.activation_threshold:
+                if (
+                    current_depth + 1 < depth
+                    and neighbor.activation >= self.activation_threshold
+                ):
                     queue.append((neighbor_id, current_depth + 1))
 
-    def activate_goals(self, goal_ids: list[str], activation: float = 1.0) -> None:
+    def activate_goals(
+        self, goal_ids: list[str], activation: float = 1.0, decay_per_hop: float = 0.7
+    ) -> None:
         """Activate multiple goal nodes and propagate activation.
 
         Args:
             goal_ids: List of goal node IDs to activate
             activation: Activation level for each goal
+            decay_per_hop: Retention rate per hop (default: 0.7)
         """
         for goal_id in goal_ids:
             self.activate_node(goal_id, activation)
 
         for goal_id in goal_ids:
-            self.propagate_activation(goal_id)
+            self.propagate_activation(goal_id, decay_per_hop=decay_per_hop)
 
     def reset_all_activations(self) -> None:
         """Reset all node activations and similarity_to_query to zero."""
