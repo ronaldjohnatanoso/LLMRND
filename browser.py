@@ -1183,7 +1183,7 @@ def main():
                             "role": "QUERY",
                             "activation": 1.0,
                             "x": 50,
-                            "y": 60,
+                            "y": 50,
                             "step_added": step_idx,
                             "color": "#FF6B6B",
                             "layer": 0
@@ -1201,7 +1201,7 @@ def main():
                                 margin = 15
                                 available_width = 100 - 2 * margin
                                 x = margin + (available_width / max(1, len(nodes_data) - 1)) * i if len(nodes_data) > 1 else 50
-                                y = 180
+                                y = 200  # Increased from 180 for better spacing
 
                                 role_colors = {
                                     "FACT": "#4ECDC4", "OBSERVATION": "#95E1D3",
@@ -1264,7 +1264,7 @@ def main():
                         else:
                             x = 50
 
-                        y = 180 + hop * 100
+                        y = 200 + hop * 120  # Increased spacing: 200 base + 120 per hop instead of 100
 
                         if newly_activated and child_id not in nodes_to_show:
                             delta = step_data.get("delta", 0)
@@ -1325,21 +1325,59 @@ def main():
                 # Title and current step info
                 current_step_data = timeline[viz_step]
                 step_type = current_step_data["type"]
-                step_messages = {
-                    "search": "🔍 Searching for similar nodes...",
-                    "search_results": f"📊 Found {len(current_step_data.get('candidates', []))} candidates",
-                    "layer_1": "✅ Layer 1: Direct matches activated",
-                    "hop_start": f"🌊 Starting hop {current_step_data.get('hop', 0)}",
-                    "propagation": f"➡️ Propagating: {current_step_data.get('parent_id', '')[:8]} → {current_step_data.get('child_id', '')[:8]}",
-                    "gate_1_fail": "🚫 Gate 1: Signal too weak",
-                    "gate_2_fail": "🚫 Gate 2: Node too weak",
-                    "filtered": "🔍 Filtering weak matches...",
-                    "complete": "✨ Propagation complete!"
-                }
+
+                # Helper to get node text for display
+                def get_node_text(node_id, max_len=25):
+                    if node_id in nodes_to_show:
+                        return nodes_to_show[node_id].get("label", node_id[:8])
+                    # Try to get from graph
+                    node = memory.graph.get_node(node_id)
+                    if node:
+                        text = node.text[:max_len] + "..." if len(node.text) > max_len else node.text
+                        return text
+                    return node_id[:8]
+
+                # Build descriptive step messages
+                if step_type == "search":
+                    step_msg = f"🔍 Searching for: \"{query[:30]}...\""
+                elif step_type == "search_results":
+                    step_msg = f"📊 Found {len(current_step_data.get('candidates', []))} candidate nodes"
+                elif step_type == "layer_1":
+                    count = len(current_step_data.get('nodes_data', []))
+                    step_msg = f"✅ Layer 1: {count} direct matches activated"
+                elif step_type == "hop_start":
+                    hop = current_step_data.get('hop', 0)
+                    step_msg = f"🌊 Starting Hop {hop}: Spreading activation"
+                elif step_type == "propagation":
+                    parent_id = current_step_data.get('parent_id', '')
+                    child_id = current_step_data.get('child_id', '')
+                    parent_text = get_node_text(parent_id, 20)
+                    child_text = get_node_text(child_id, 20) if current_step_data.get('newly_activated') else "existing node"
+                    delta = current_step_data.get('delta', 0)
+                    step_msg = f"➡️ {parent_text} → {child_text} (Δ{delta:.3f})"
+                elif step_type == "gate_1_fail":
+                    parent_id = current_step_data.get('parent_id', '')
+                    child_text = get_node_text(current_step_data.get('child_id', ''), 25)
+                    delta = current_step_data.get('delta', 0)
+                    threshold = current_step_data.get('threshold', 0.3)
+                    step_msg = f"🚫 Gate 1: Signal to '{child_text}' too weak (Δ{delta:.3f} < {threshold})"
+                elif step_type == "gate_2_fail":
+                    node_id = current_step_data.get('node_id', '')
+                    node_text = get_node_text(node_id, 25)
+                    activation = current_step_data.get('activation', 0)
+                    threshold = current_step_data.get('threshold', 0.5)
+                    step_msg = f"🚫 Gate 2: '{node_text}' too weak to propagate (act: {activation:.3f} < {threshold})"
+                elif step_type == "filtered":
+                    step_msg = f"🔍 Filtering weak matches..."
+                elif step_type == "complete":
+                    final = current_step_data.get('final_states', [])
+                    step_msg = f"✨ Propagation complete! {len(final)} nodes activated"
+                else:
+                    step_msg = f"Step {viz_step + 1}: {step_type}"
 
                 svg_elements.append(f'''
-                    <text x="400" y="30" text-anchor="middle" fill="#ffffff" font-size="18" font-weight="bold">
-                        {step_messages.get(step_type, "Step " + str(viz_step + 1))}
+                    <text x="400" y="30" text-anchor="middle" fill="#ffffff" font-size="16" font-weight="bold">
+                        {step_msg}
                     </text>
                 ''')
 
@@ -1460,10 +1498,10 @@ def main():
                 # Layer indicators on the left side
                 for layer in sorted(layer_structure.keys()):
                     if layer == 0:
-                        y_pos = 60
+                        y_pos = 50  # Match query node y position
                         label = "Query"
                     else:
-                        y_pos = 180 + (layer - 1) * 100
+                        y_pos = 200 + (layer - 1) * 120  # Match propagation y calculation
                         label = f"Layer {layer}"
 
                     svg_elements.append(f'''
