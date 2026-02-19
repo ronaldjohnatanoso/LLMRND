@@ -1,6 +1,7 @@
 """
 FastAPI backend for CogMemory system.
 """
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -25,22 +26,52 @@ sys.path.insert(0, PARENT_DIR)
 from cog_memory.query_interface import CognitiveMemory
 from cog_memory.node import Role
 
-app = FastAPI(title="CogMemory API", version="1.0.0")
-
-# CORS for Next.js frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Global memory instance
 memory = None
 
 # Check if using local embeddings
 USE_LOCAL_EMBEDDINGS = os.getenv("USE_LOCAL_EMBEDDINGS", "false").lower() == "true"
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown."""
+    global memory
+    try:
+        # Initialize with appropriate embedding manager
+        if USE_LOCAL_EMBEDDINGS:
+            print("🔄 Using local sentence-transformers embeddings")
+            memory = CognitiveMemory(use_sentence_transformer=True, use_nomic=False)
+        else:
+            api_key = os.getenv("NOMIC_API_KEY")
+            if not api_key or api_key == "your_nomic_api_key_here":
+                print("⚠️  NOMIC_API_KEY not set, falling back to local embeddings")
+                print("   Set USE_LOCAL_EMBEDDINGS=true in .env to suppress this warning")
+                memory = CognitiveMemory(use_sentence_transformer=True, use_nomic=False)
+            else:
+                print("🌐 Using Nomic API embeddings")
+                memory = CognitiveMemory(use_nomic=True, use_sentence_transformer=False)
+
+        print(f"✅ CogMemory initialized (embeddings: {'local' if USE_LOCAL_EMBEDDINGS or not os.getenv('NOMIC_API_KEY') else 'Nomic API'})")
+    except Exception as e:
+        print(f"❌ Error initializing CogMemory: {e}")
+        import traceback
+        traceback.print_exc()
+
+    yield
+
+    # Cleanup on shutdown
+    print("🛑 Shutting down...")
+
+app = FastAPI(title="CogMemory API", version="1.0.0", lifespan=lifespan)
+
+# CORS for Next.js frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Request/Response models
 class AddNodesRequest(BaseModel):
@@ -69,31 +100,6 @@ class SimulationResponse(BaseModel):
     total_steps: int
     final_states: List[dict]
     settings: dict
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize CogMemory on startup."""
-    global memory
-    try:
-        # Initialize with appropriate embedding manager
-        if USE_LOCAL_EMBEDDINGS:
-            print("🔄 Using local sentence-transformers embeddings")
-            memory = CognitiveMemory(use_sentence_transformer=True, use_nomic=False)
-        else:
-            api_key = os.getenv("NOMIC_API_KEY")
-            if not api_key or api_key == "your_nomic_api_key_here":
-                print("⚠️  NOMIC_API_KEY not set, falling back to local embeddings")
-                print("   Set USE_LOCAL_EMBEDDINGS=true in .env to suppress this warning")
-                memory = CognitiveMemory(use_sentence_transformer=True, use_nomic=False)
-            else:
-                print("🌐 Using Nomic API embeddings")
-                memory = CognitiveMemory(use_nomic=True, use_sentence_transformer=False)
-
-        print(f"✅ CogMemory initialized (embeddings: {'local' if USE_LOCAL_EMBEDDINGS or not os.getenv('NOMIC_API_KEY') else 'Nomic API'})")
-    except Exception as e:
-        print(f"❌ Error initializing CogMemory: {e}")
-        import traceback
-        traceback.print_exc()
 
 @app.get("/")
 async def root():

@@ -3,10 +3,11 @@ uvicorn[standard]==0.32.0
 pydantic==2.9.0
 python-dotenv==1.0.0
 
-# CogMemory dependencies (for Nomic API)
+# CogMemory dependencies
 lancedb==0.14.0
 numpy==1.26.4
 requests==2.31.0
+openai>=1.0.0  # For llm_extractor
 
 # Optional: For local embeddings (uncomment if USE_LOCAL_EMBEDDINGS=true)
 # sentence-transformers==3.0.1
