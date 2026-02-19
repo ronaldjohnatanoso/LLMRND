@@ -1034,7 +1034,14 @@ def main():
                         st.session_state.anim_step = total_steps - 1
 
                 # Manual control info
-                st.caption("💡 Use buttons or drag the slider to navigate instantly")
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.caption("💡 Use ▶️ button or drag slider to see graph grow")
+                with col2:
+                    # Auto-advance to Layer 1 if at beginning
+                    if viz_step < 2:
+                        if st.button("⚡ Jump to Layer 1", key="viz_jump_l1", use_container_width=True):
+                            st.session_state.viz_step = 2
 
                 # Current step display
                 step_data = sim_data["timeline"][step]
@@ -1299,6 +1306,21 @@ def main():
 
                 # Background
                 svg_elements.append(f'<rect width="100%" height="100%" fill="#1a1a2e"/>')
+
+                # Add hint overlay if no nodes visible yet (step 0-1)
+                if len(nodes_to_show) <= 1:  # Only query node or nothing
+                    svg_elements.append(f'''
+                        <rect x="200" y="200" width="400" height="100" rx="10" fill="#2a2a4e" opacity="0.9"/>
+                        <text x="400" y="240" text-anchor="middle" fill="#FFD700" font-size="16" font-weight="bold">
+                            🌱 Graph Starting...
+                        </text>
+                        <text x="400" y="265" text-anchor="middle" fill="#cccccc" font-size="13">
+                            Click ▶️ or drag slider to see nodes appear!
+                        </text>
+                        <text x="400" y="285" text-anchor="middle" fill="#888888" font-size="11">
+                            Layer 1 nodes appear at step 3
+                        </text>
+                    ''')
 
                 # Title and current step info
                 current_step_data = timeline[viz_step]
