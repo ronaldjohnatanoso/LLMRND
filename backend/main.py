@@ -23,7 +23,7 @@ load_dotenv(os.path.join(PARENT_DIR, '.env'))
 sys.path.insert(0, PARENT_DIR)
 
 from cog_memory.query_interface import CognitiveMemory
-from cog_memory.cognitive_graph import NodeRole
+from cog_memory.node import Role
 
 app = FastAPI(title="CogMemory API", version="1.0.0")
 
@@ -111,7 +111,7 @@ async def add_nodes(request: AddNodesRequest):
         raise HTTPException(status_code=503, detail="Memory not initialized")
 
     try:
-        role = NodeRole[request.role.upper()] if request.role else NodeRole.FACT
+        role = Role[request.role.upper()] if request.role else Role.FACT
         new_nodes = memory.add_commitments(
             texts=request.texts,
             default_role=role
