@@ -1497,14 +1497,23 @@ def main():
 
                 # Combine SVG with proper HTML wrapper
                 svg_html = f'''
-                <div style="width:100%;height:{svg_height}px;overflow:hidden;border-radius:8px;background:#1a1a2e;">
-                    <svg width="100%" height="100%" viewBox="0 0 {svg_width} {svg_height}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body {{ margin: 0; padding: 0; }}
+                        svg {{ display: block; }}
+                    </style>
+                </head>
+                <body>
+                    <svg width="{svg_width}" height="{svg_height}" viewBox="0 0 {svg_width} {svg_height}" xmlns="http://www.w3.org/2000/svg">
                         {''.join(svg_elements)}
                     </svg>
-                </div>
+                </body>
+                </html>
                 '''
 
-                st.markdown(svg_html, unsafe_allow_html=True)
+                st.components.v1.html(svg_html, height=svg_height + 20, scrolling=False)
 
                 # Step info panel
                 with st.expander("📊 Step Details", expanded=True):
