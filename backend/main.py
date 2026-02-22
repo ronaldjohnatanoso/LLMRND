@@ -239,8 +239,14 @@ async def clear_memory():
         raise HTTPException(status_code=503, detail="Memory not initialized")
 
     try:
-        memory.graph = CognitiveGraph()
-        return {"message": "Memory cleared"}
+        # Clear the in-memory graph
+        memory.graph.nodes.clear()
+
+        # Drop and recreate the LanceDB table
+        memory.store.db.drop_table(memory.store.table_name)
+        memory.store.table = memory.store._get_or_create_table()
+
+        return {"message": "Memory cleared successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
