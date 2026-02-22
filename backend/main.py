@@ -144,17 +144,17 @@ async def get_all_nodes():
         raise HTTPException(status_code=503, detail="Memory not initialized")
 
     try:
-        nodes = memory.store.get_all_nodes()
+        node_records = memory.store.get_all_nodes()
         return [
             NodeResponse(
-                id=node.id,
-                text=node.text,
-                role=node.role.value,
-                activation=node.activation,
-                confidence=node.confidence,
-                neighbors=list(node.neighbors.keys())
+                id=record["id"],
+                text=record.get("text", ""),
+                role=record.get("role", "FACT"),
+                activation=record.get("activation", 0.0),
+                confidence=record.get("confidence", 0.0),
+                neighbors=record.get("neighbors", [])
             )
-            for node in nodes
+            for record in node_records
         ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
