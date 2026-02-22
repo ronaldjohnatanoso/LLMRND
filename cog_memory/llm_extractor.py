@@ -128,11 +128,9 @@ CRITICAL REQUIREMENTS:
 - Do NOT extract partial phrases or segments
 - Each commitment MUST be a standalone, meaningful statement
 - Prioritize quality over quantity - better to miss a commitment than extract a bad one
-- CRITICAL: Each extracted commitment must be INDEPENDENT and SELF-CONTAINED
-- Do NOT extract sentences that start with pronouns (it, they, he, she, this, that) without context
-- Do NOT extract sentences that rely on previous sentences for meaning
-- Replace pronouns with the actual noun they refer to when extracting
-- If a sentence cannot be made independent, do NOT extract it
+- **CONTEXT INJECTION**: When extracting, replace pronouns (it, he, she, they, this, that) with the actual noun they refer to
+- Each commitment should be independently retrievable and understandable without reading other nodes
+- Preserve semantic granularity - keep facts atomic but add minimal context for independence
 
 Examples of GOOD extractions:
 Input: "The system requires 50 TB of storage and must maintain 99.99% uptime."
@@ -141,26 +139,36 @@ Input: "The system requires 50 TB of storage and must maintain 99.99% uptime."
 
 Input: "banana is the best fucking food in the whole universe"
 ✓ Extract: "banana is the best fucking food in the whole universe" (observation)
-✗ DO NOT extract: "banana is the best"
-✗ DO NOT extract: "the whole universe"
-✗ DO NOT extract: "the best fucking food"
+✗ DO NOT extract: "banana is the best" (too vague)
+✗ DO NOT extract: "the whole universe" (not a complete thought)
 
 Input: "Due to budget constraints, we cannot use enterprise tools and must use open source alternatives."
 ✓ Extract: "Due to budget constraints, we cannot use enterprise tools" (constraint)
-✓ Extract: "we must use open source alternatives" (decision)
-✗ DO NOT extract: "budget constraints"
-✗ DO NOT extract: "enterprise tools"
+✓ Extract: "We must use open source alternatives" (decision)
+✗ DO NOT extract: "budget constraints" (too vague, not actionable)
+✗ DO NOT extract: "enterprise tools" (not a complete thought)
+
+**CONTEXT INJECTION EXAMPLES:**
 
 Input: "Banana is a very popular fruit. It is consumed in fresh or cooked form both as ripe and raw fruit."
 ✓ Extract: "Banana is a very popular fruit" (observation)
 ✓ Extract: "Banana is consumed in fresh or cooked form both as ripe and raw fruit" (fact)
-✗ DO NOT extract: "It is consumed in fresh or cooked form" ❌ NOT INDEPENDENT (uses "It" without context)
-✗ DO NOT extract: "both as ripe and raw fruit" ❌ NOT A COMPLETE THOUGHT
+   NOTE: "It" was replaced with "Banana" to make it independent
 
 Input: "Charles Babbage invented the analytical engine. He is considered the father of computers."
 ✓ Extract: "Charles Babbage invented the analytical engine" (fact)
 ✓ Extract: "Charles Babbage is considered the father of computers" (fact)
-✗ DO NOT extract: "He is considered the father of computers" ❌ NOT INDEPENDENT (uses "He" without context)
+   NOTE: "He" was replaced with "Charles Babbage" to make it independent
+
+Input: "The database has performance issues. They affect user experience significantly."
+✓ Extract: "The database has performance issues" (observation)
+✓ Extract: "The database performance issues affect user experience significantly" (observation)
+   NOTE: "They" was replaced with "The database performance issues" to make it independent
+
+Input: "React uses a virtual DOM. This makes rendering faster."
+✓ Extract: "React uses a virtual DOM" (fact)
+✓ Extract: "React's virtual DOM makes rendering faster" (fact)
+   NOTE: "This" was replaced with "React's virtual DOM" to make it independent
 
 For each commitment, provide:
 1. text: A complete, standalone sentence (minimum 15 characters, complete thought)
@@ -238,13 +246,6 @@ Response:"""
                 words = node_text.split()
                 if len(words) < 3:
                     print(f"⚠️ Skipping commitment with too few words: '{node_text[:50]}...'")
-                    continue
-
-                # Validate independence - check if starts with pronoun (indicates dependency on context)
-                first_word_lower = words[0].lower()
-                pronouns = {"it", "they", "he", "she", "this", "that", "these", "those", "its", "his", "her", "their", "my", "your", "our", "we", "you"}
-                if first_word_lower in pronouns:
-                    print(f"⚠️ Skipping non-independent commitment (starts with pronoun '{words[0]}'): '{node_text[:50]}...'")
                     continue
 
                 nodes.append(
@@ -330,13 +331,6 @@ Response:"""
             words = node_text.split()
             if len(words) < 3:
                 print(f"⚠️ Skipping commitment with too few words: '{node_text[:50]}...'")
-                continue
-
-            # Validate independence - check if starts with pronoun (indicates dependency on context)
-            first_word_lower = words[0].lower()
-            pronouns = {"it", "they", "he", "she", "this", "that", "these", "those", "its", "his", "her", "their", "my", "your", "our", "we", "you"}
-            if first_word_lower in pronouns:
-                print(f"⚠️ Skipping non-independent commitment (starts with pronoun '{words[0]}'): '{node_text[:50]}...'")
                 continue
 
             nodes.append(
