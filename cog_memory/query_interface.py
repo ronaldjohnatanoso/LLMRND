@@ -363,6 +363,8 @@ class CognitiveMemory:
         if propagation_threshold is not None:
             self.graph.propagation_threshold = propagation_threshold
 
+        print(f"[query_simulation] Settings: activation_threshold={self.graph.activation_threshold}, propagation_threshold={self.graph.propagation_threshold}, decay_per_hop={decay_per_hop}, max_steps={max_steps}")
+
         # Reset activations
         self.graph.reset_all_activations()
 
@@ -547,6 +549,10 @@ class CognitiveMemory:
                 # Update activation
                 old_activation = neighbor.activation
                 neighbor.update_activation(activation_delta)
+
+                print(f"[PROPAGATION] node.role={node.role.value} -> neighbor.role={neighbor.role.value}, role_boost={role_boost}")
+                print(f"[PROPAGATION] base_similarity={base_similarity:.3f}, weight={weight:.3f}, decay_factor={decay_factor:.3f}")
+                print(f"[PROPAGATION] activation_delta={activation_delta:.3f} (neighbor old_activation={old_activation:.3f}, new_activation={neighbor.activation:.3f})")
                 visited_edges.add(edge)
                 newly_activated = neighbor_id not in activated_ids
 

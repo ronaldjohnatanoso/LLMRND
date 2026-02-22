@@ -31,9 +31,8 @@ ROLE_BOOSTS: Mapping[tuple[Role, Role], float] = {
     (Role.CONDITIONAL_DEPENDENCY, Role.CONSTRAINT): 1.1,
     # Goals activate conditional dependencies
     (Role.GOAL, Role.CONDITIONAL_DEPENDENCY): 1.2,
-    # Default (same-role activation)
-    (Role.FACT, Role.FACT): 1.0,
-    (Role.OBSERVATION, Role.OBSERVATION): 1.0,
+    # Observation same-role activation
+    (Role.OBSERVATION, Role.OBSERVATION): 1.1,
 }
 
 
