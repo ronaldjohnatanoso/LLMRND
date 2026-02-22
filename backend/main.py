@@ -144,7 +144,7 @@ async def get_all_nodes():
         raise HTTPException(status_code=503, detail="Memory not initialized")
 
     try:
-        nodes = memory.graph.get_all_nodes()
+        nodes = memory.store.get_all_nodes()
         return [
             NodeResponse(
                 id=node.id,
