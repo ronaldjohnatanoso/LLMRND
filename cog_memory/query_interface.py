@@ -430,6 +430,9 @@ class CognitiveMemory:
             if node:
                 node.similarity_to_query = 0.0
 
+        # Sort layer 1 nodes by activation (similarity) descending
+        layer_1_nodes.sort(key=lambda x: x["activation"], reverse=True)
+
         timeline.append({
             "step": step_id,
             "type": "layer_1",
@@ -441,7 +444,9 @@ class CognitiveMemory:
 
         # STEP 3-N: Propagation with step-by-step tracking
         visited_edges = set()
-        queue = deque([(node_id, 0, None) for node_id in activated_ids])  # (node_id, hop, parent_id)
+        # Sort activated_ids by activation (similarity) so highest similarity nodes propagate first
+        sorted_layer1 = sorted(activated_ids, key=lambda nid: self.graph.get_node(nid).activation if self.graph.get_node(nid) else 0, reverse=True)
+        queue = deque([(node_id, 0, None) for node_id in sorted_layer1])  # (node_id, hop, parent_id)
         processed_in_hop = {0: list(activated_ids)}
 
         current_hop = 0
@@ -457,7 +462,7 @@ class CognitiveMemory:
                 timeline.append({
                     "step": step_id,
                     "type": "hop_start",
-                    "message": f"🚶 Hop {hop}: Exploring neighbors of activated nodes",
+                    "message": f"🚶 Layer {hop + 1}: Exploring neighbors of Layer {hop} nodes (depth={hop})",
                     "hop": hop,
                     "nodes_activated": list(activated_ids),
                 })
@@ -478,9 +483,10 @@ class CognitiveMemory:
                     step_id += 1
                 continue
 
-            # Process each neighbor
+            # Process each neighbor (sorted by weight to process strongest connections first)
             neighbors_processed = 0
-            for neighbor_id, weight in node.neighbors.items():
+            sorted_neighbors = sorted(node.neighbors.items(), key=lambda x: x[1], reverse=True)
+            for neighbor_id, weight in sorted_neighbors:
                 edge = (node_id, neighbor_id)
                 if edge in visited_edges:
                     continue

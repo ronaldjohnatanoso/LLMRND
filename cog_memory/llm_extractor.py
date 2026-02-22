@@ -123,14 +123,33 @@ Meta-roles:
 - conditional_dependency: Relationship between nodes (if X then Y)
 
 CRITICAL REQUIREMENTS:
-- Extract ONLY complete sentences that express a full thought
-- Do NOT break sentences into fragments
-- Do NOT extract partial phrases or segments
-- Each commitment MUST be a standalone, meaningful statement
-- Prioritize quality over quantity - better to miss a commitment than extract a bad one
-- **CONTEXT INJECTION**: When extracting, replace pronouns (it, he, she, they, this, that) with the actual noun they refer to
-- Each commitment should be independently retrievable and understandable without reading other nodes
-- Preserve semantic granularity - keep facts atomic but add minimal context for independence
+
+**1. MANDATORY CONTEXT INJECTION (HIGHEST PRIORITY):**
+   - EVERY extracted commitment MUST replace pronouns with the actual noun they refer to
+   - If a sentence starts with "He", "She", "It", "They", or "This" - you MUST replace it
+   - Identify what the pronoun refers to from the text and use that noun instead
+   - "He" → Use the person's actual name (e.g., "Alan Turing", "Charles Babbage")
+   - "She" → Use the person's actual name (e.g., "Ada Lovelace", "Grace Hopper")
+   - "It" → Use the object's actual name (e.g., "The system", "The database", "React's virtual DOM")
+   - "They" → Use the actual plural noun (e.g., "The performance issues", "The nodes")
+   - "This" → Use the actual thing (e.g., "The analytical engine", "The encryption technique")
+
+**2. COMPLETE SENTENCES ONLY:**
+   - Extract ONLY complete sentences that express a full thought
+   - Do NOT break sentences into fragments
+   - Do NOT extract partial phrases or segments
+   - Each commitment MUST be a standalone, meaningful statement
+
+**3. QUALITY OVER QUANTITY:**
+   - Prioritize quality over quantity - better to miss a commitment than extract a bad one
+   - Each commitment should be independently retrievable and understandable without reading other nodes
+   - Preserve semantic granularity - keep facts atomic but add minimal context for independence
+
+**4. FORBIDDEN EXTRACTIONS (WILL BE REJECTED):**
+   - ❌ ANY sentence starting with "He", "She", "It", "They", "This", "That" (unless the referent is explicit)
+   - ❌ Sentences under 15 characters
+   - ❌ Fragments like "budget constraints" or "enterprise tools"
+   - ❌ Vague phrases without context
 
 Examples of GOOD extractions:
 Input: "The system requires 50 TB of storage and must maintain 99.99% uptime."
@@ -169,6 +188,24 @@ Input: "React uses a virtual DOM. This makes rendering faster."
 ✓ Extract: "React uses a virtual DOM" (fact)
 ✓ Extract: "React's virtual DOM makes rendering faster" (fact)
    NOTE: "This" was replaced with "React's virtual DOM" to make it independent
+
+**NEGATIVE EXAMPLES (WHAT NOT TO DO):**
+
+Input: "Alan Turing devised the Turing test. He is widely considered the father of theoretical computer science."
+✗ WRONG: "He is widely considered the father of theoretical computer science" (WRONG - starts with pronoun)
+✓ CORRECT: "Alan Turing is widely considered the father of theoretical computer science" (CORRECT - pronoun replaced)
+
+Input: "Ada Lovelace wrote the first algorithm. She was the daughter of Lord Byron."
+✗ WRONG: "She was the daughter of Lord Byron" (WRONG - starts with pronoun)
+✓ CORRECT: "Ada Lovelace was the daughter of Lord Byron" (CORRECT - pronoun replaced)
+
+Input: "The system has bugs. They cause crashes."
+✗ WRONG: "They cause crashes" (WRONG - starts with pronoun)
+✓ CORRECT: "The system bugs cause crashes" (CORRECT - pronoun replaced)
+
+Input: "Grace Hopper developed the first compiler. It revolutionized programming."
+✗ WRONG: "It revolutionized programming" (WRONG - starts with pronoun)
+✓ CORRECT: "The first compiler revolutionized programming" (CORRECT - pronoun replaced with specific referent)
 
 For each commitment, provide:
 1. text: A complete, standalone sentence (minimum 15 characters, complete thought)
@@ -211,7 +248,7 @@ Response:"""
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a precise commitment extractor. Always return valid JSON.",
+                        "content": "You are a precise commitment extractor. ALWAYS replace pronouns (he, she, it, they, this, that) with the actual nouns they refer to. NEVER extract sentences starting with pronouns. Always return valid JSON.",
                     },
                     {"role": "user", "content": prompt},
                 ],
@@ -246,6 +283,18 @@ Response:"""
                 words = node_text.split()
                 if len(words) < 3:
                     print(f"⚠️ Skipping commitment with too few words: '{node_text[:50]}...'")
+                    continue
+
+                # REJECT pronouns at start - enforce context injection
+                pronoun_start_words = {
+                    "he", "she", "it", "they", "this", "that", "these", "those",
+                    "his", "her", "its", "their", "my", "your", "our", "his",
+                    "him", "them", "me", "you", "us"
+                }
+                first_word = words[0].lower().rstrip(".,!?;:")
+                if first_word in pronoun_start_words:
+                    print(f"❌ REJECTING commitment starting with pronoun '{first_word}': '{node_text[:70]}...'")
+                    print(f"   The LLM failed to perform context injection. This commitment will be skipped.")
                     continue
 
                 nodes.append(
@@ -286,7 +335,7 @@ Response:"""
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a precise commitment extractor. Always return valid JSON.",
+                    "content": "You are a precise commitment extractor. ALWAYS replace pronouns (he, she, it, they, this, that) with the actual nouns they refer to. NEVER extract sentences starting with pronouns. Always return valid JSON.",
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -331,6 +380,18 @@ Response:"""
             words = node_text.split()
             if len(words) < 3:
                 print(f"⚠️ Skipping commitment with too few words: '{node_text[:50]}...'")
+                continue
+
+            # REJECT pronouns at start - enforce context injection
+            pronoun_start_words = {
+                "he", "she", "it", "they", "this", "that", "these", "those",
+                "his", "her", "its", "their", "my", "your", "our", "his",
+                "him", "them", "me", "you", "us"
+            }
+            first_word = words[0].lower().rstrip(".,!?;:")
+            if first_word in pronoun_start_words:
+                print(f"❌ REJECTING commitment starting with pronoun '{first_word}': '{node_text[:70]}...'")
+                print(f"   The LLM failed to perform context injection. This commitment will be skipped.")
                 continue
 
             nodes.append(

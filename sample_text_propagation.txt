@@ -1,0 +1,13 @@
+Alan Turing's Computational Goals
+
+Alan Turing wanted to create a universal machine that could compute anything that was computable. This goal led him to design the theoretical Turing machine in 1936.
+
+During World War II, Turing applied his computational theories to cryptography. His goal was to break the German Enigma cipher. This objective led him to work at Bletchley Park where he developed the bombe machine.
+
+The bombe machine successfully decoded German naval messages. This breakthrough helped the Allies win the Battle of the Atlantic. Historians estimate this work shortened the war by two years.
+
+After the war, Turing aimed to build a practical stored-program computer. This goal drove him to design the Automatic Computing Engine (ACE) at the National Physical Laboratory. Later, he continued this vision at Manchester where he helped develop the Manchester computers.
+
+Turing also wanted to solve the fundamental question: Can machines think? This question motivated him to devise the Turing test in 1950. The test became a foundational concept in artificial intelligence research.
+
+To achieve these ambitious goals, Turing needed mathematical tools. He developed formal theories of computation and mathematical morphogenesis. These tools enabled future generations to advance computer science and AI.

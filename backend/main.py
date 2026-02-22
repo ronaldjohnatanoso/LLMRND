@@ -93,6 +93,7 @@ class NodeResponse(BaseModel):
     activation: float
     confidence: float
     neighbors: List[str]
+    similarity: float = 0.0
 
 class SimulationResponse(BaseModel):
     query: str
@@ -181,7 +182,8 @@ async def query(request: QueryRequest):
                 role=node.role.value,
                 activation=node.activation,
                 confidence=node.confidence,
-                neighbors=list(node.neighbors.keys())
+                neighbors=list(node.neighbors.keys()),
+                similarity=getattr(node, 'similarity_to_query', 0.0)
             )
             for node in results
         ]

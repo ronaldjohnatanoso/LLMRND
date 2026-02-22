@@ -12,8 +12,8 @@ import { SimulationResponse, Node as NodeType } from "@/types";
 type TabType = "query" | "nodes" | "search" | "add";
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<TabType>("nodes");
-  const [query, setQuery] = useState("father of computer");
+  const [activeTab, setActiveTab] = useState<TabType>("query");
+  const [query, setQuery] = useState("how is paper made");
   const [simulation, setSimulation] = useState<SimulationResponse | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -28,6 +28,7 @@ export default function Home() {
   const [candidateMultiplier, setCandidateMultiplier] = useState(2);
   const [decayPerHop, setDecayPerHop] = useState(0.7);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [isFullscreenGraph, setIsFullscreenGraph] = useState(false);
 
   // Load total nodes on mount
   useEffect(() => {
@@ -80,6 +81,19 @@ export default function Home() {
       console.error("Error loading neighbors:", error);
       setSelectedNodeNeighbors([]);
     }
+  };
+
+  const exportSimulation = () => {
+    if (!simulation) return;
+
+    const dataStr = JSON.stringify(simulation, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `simulation-${Date.now()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const currentStepData = simulation?.timeline[currentStep];
@@ -265,6 +279,26 @@ export default function Home() {
               )}
             </div>
 
+            {/* Fullscreen & Export Buttons */}
+            {simulation && (
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={exportSimulation}
+                  className="px-4 py-2 bg-green-700 hover:bg-green-600 rounded-lg transition-all flex items-center gap-2 text-sm"
+                >
+                  <span>📥</span>
+                  <span>Export JSON</span>
+                </button>
+                <button
+                  onClick={() => setIsFullscreenGraph(true)}
+                  className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-all flex items-center gap-2 text-sm"
+                >
+                  <span>⛶</span>
+                  <span>Fullscreen Graph</span>
+                </button>
+              </div>
+            )}
+
             {/* Simulation Results */}
             {simulation && (
               <div className="space-y-6">
@@ -368,7 +402,10 @@ export default function Home() {
                 )}
 
                 {/* Graph Visualization */}
-                <GraphVisualization simulation={simulation} currentStep={currentStep} />
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Graph Visualization</h3>
+                  <GraphVisualization simulation={simulation} currentStep={currentStep} />
+                </div>
               </div>
             )}
 
@@ -407,6 +444,126 @@ export default function Home() {
             setSelectedNodeNeighbors([]);
           }}
         />
+      )}
+
+      {/* Fullscreen Graph Modal */}
+      {isFullscreenGraph && simulation && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950 flex flex-col"
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+              setCurrentStep((s) => Math.max(0, s - 1));
+            } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+              setCurrentStep((s) => Math.min(simulation.total_steps - 1, s + 1));
+            } else if (e.key === "Home") {
+              setCurrentStep(0);
+            } else if (e.key === "End") {
+              setCurrentStep(simulation.total_steps - 1);
+            } else if (e.key === "Escape") {
+              setIsFullscreenGraph(false);
+            }
+          }}
+          tabIndex={0}
+        >
+          {/* Header Bar */}
+          <div className="flex-shrink-0 bg-slate-900 border-b border-slate-700 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Query Simulation - Fullscreen (← → arrows, Esc to close)</h2>
+              <button
+                onClick={() => setIsFullscreenGraph(false)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-all"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* Controls */}
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* Navigation Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentStep(0)}
+                  disabled={currentStep === 0}
+                  className="px-3 py-1 bg-slate-700 rounded hover:bg-slate-600 disabled:opacity-50 text-sm"
+                >
+                  ⏮
+                </button>
+                <button
+                  onClick={() => setCurrentStep((s) => Math.max(0, s - 1))}
+                  disabled={currentStep === 0}
+                  className="px-3 py-1 bg-slate-700 rounded hover:bg-slate-600 disabled:opacity-50 text-sm"
+                >
+                  ◀
+                </button>
+                <button
+                  onClick={() => setCurrentStep((s) => Math.min(simulation.total_steps - 1, s + 1))}
+                  disabled={currentStep === simulation.total_steps - 1}
+                  className="px-3 py-1 bg-slate-700 rounded hover:bg-slate-600 disabled:opacity-50 text-sm"
+                >
+                  ▶
+                </button>
+                <button
+                  onClick={() => setCurrentStep(simulation.total_steps - 1)}
+                  disabled={currentStep === simulation.total_steps - 1}
+                  className="px-3 py-1 bg-slate-700 rounded hover:bg-slate-600 disabled:opacity-50 text-sm"
+                >
+                  ⏭
+                </button>
+              </div>
+
+              {/* Step Counter */}
+              <div className="text-center min-w-[100px]">
+                <div className="text-lg font-bold">{currentStep + 1} / {simulation.total_steps}</div>
+                <div className="text-xs text-slate-400">Step</div>
+              </div>
+
+              {/* Step Slider */}
+              <input
+                type="range"
+                min="0"
+                max={simulation.total_steps - 1}
+                value={currentStep}
+                onChange={(e) => setCurrentStep(parseInt(e.target.value))}
+                className="w-48 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              />
+
+              {/* Step Info */}
+              {currentStepData && (
+                <div className="flex items-center gap-3 bg-slate-800 px-4 py-2 rounded-lg">
+                  <span className="text-xl">
+                    {currentStepData.type === "search" && "🔍"}
+                    {currentStepData.type === "search_results" && "📊"}
+                    {currentStepData.type === "layer_1" && "✅"}
+                    {currentStepData.type === "hop_start" && "🌊"}
+                    {currentStepData.type === "propagation" && "➡️"}
+                    {currentStepData.type === "gate_1_fail" && "🚫"}
+                    {currentStepData.type === "gate_2_fail" && "🚫"}
+                    {currentStepData.type === "complete" && "✨"}
+                  </span>
+                  <div>
+                    <div className="text-sm font-semibold">{currentStepData.message}</div>
+                    <div className="text-xs text-slate-400 font-mono">{currentStepData.type}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Progress Bar */}
+              <div className="flex-1 min-w-[200px]">
+                <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Graph Container */}
+          <div className="flex-1 overflow-hidden">
+            <GraphVisualization simulation={simulation} currentStep={currentStep} />
+          </div>
+        </div>
       )}
     </main>
   );

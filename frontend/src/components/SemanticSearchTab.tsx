@@ -4,13 +4,9 @@ import { useState } from "react";
 import { query } from "@/lib/api";
 import { Node } from "@/types";
 
-interface SearchResultWithScore extends Node {
-  similarity?: number;
-}
-
 export default function SemanticSearchTab() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [results, setResults] = useState<SearchResultWithScore[]>([]);
+  const [results, setResults] = useState<Node[]>([]);
   const [loading, setLoading] = useState(false);
   const [k, setK] = useState(5);
   const [minSimilarity, setMinSimilarity] = useState(0.55);
@@ -37,12 +33,7 @@ export default function SemanticSearchTab() {
         candidate_multiplier: 1,
         decay_per_hop: 0.7,
       });
-      // Add mock similarity scores for now (would come from backend in real implementation)
-      const resultsWithScores = result.map((node, i) => ({
-        ...node,
-        similarity: 1 - (i * 0.05), // Mock similarity decreasing with rank
-      }));
-      setResults(resultsWithScores);
+      setResults(result);
     } catch (error) {
       console.error("Search error:", error);
       alert("Failed to search. Check if backend is running.");
@@ -168,7 +159,7 @@ export default function SemanticSearchTab() {
           </h3>
           <div className="space-y-3">
             {results.map((node, i) => {
-              const similarity = node.similarity || 0;
+              const similarity = node.similarity;
               const quality = getQualityIndicator(similarity);
 
               return (

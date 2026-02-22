@@ -5,6 +5,7 @@ export interface Node {
   activation: number;
   confidence: number;
   neighbors: string[];
+  similarity: number;
 }
 
 export interface QueryRequest {
@@ -36,6 +37,11 @@ export interface SimulationStep {
   newly_activated?: boolean;
   threshold?: number;
   activation?: number;
+  old_activation?: number;
+  new_activation?: number;
+  edge_weight?: number;
+  role_boost?: number;
+  decay_factor?: number;
   node_id?: string;
   final_states?: Array<{
     id: string;
@@ -72,6 +78,10 @@ export interface GraphNode {
     activation: number;
     layer: number;
     stepAdded?: number;
+    isActive?: boolean;
+    wasActivated?: boolean;
+    propagated?: boolean;
+    failedGate2?: boolean;
   };
   position?: { x: number; y: number };
   classes?: string;
@@ -85,4 +95,5 @@ export interface GraphEdge {
     strength: number;
     stepAdded?: number;
   };
+  classes?: string;
 }

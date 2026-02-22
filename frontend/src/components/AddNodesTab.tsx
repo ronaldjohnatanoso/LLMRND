@@ -35,13 +35,25 @@ export default function AddNodesTab({ onNodesAdded }: AddNodesTabProps) {
 
   const loadSampleData = async () => {
     setText(
-      `Alan Turing was a pioneering British mathematician and computer scientist. He is widely considered the father of theoretical computer science and artificial intelligence. During World War II, Turing worked at Bletchley Park, Britain's codebreaking center, where he devised techniques for breaking German ciphers, including improvements to the pre-war Polish bombe method and an electromechanical machine that could find settings for the Enigma machine.
+      `John Smith was a dedicated engineer who worked on steam locomotives in Victorian England. He believed steam power was the future of transportation. His goal was to design the most efficient boiler system possible.
 
-Turing played a crucial role in cracking intercepted coded messages that enabled the Allies to defeat the Nazis in many crucial engagements, including the Battle of the Atlantic. Due to the problems of counterfactual history, it's hard to estimate the precise impact of his work, but some historians have estimated that his work shortened the war in Europe by more than two years and saved over 14 million lives.
+In 1875, John married Elizabeth Thompson, a schoolteacher from Kent. Elizabeth loved gardening and spent her free time cultivating rare orchids. She maintained that orchids required precise humidity levels between 60% and 80%.
 
-After the war, Turing worked at the National Physical Laboratory, where he designed the Automatic Computing Engine (ACE), one of the first designs for a stored-program computer. In 1948, he joined Max Newman's Computing Machine Laboratory at the University of Manchester, where he helped develop the Manchester computers and became interested in mathematical biology.
+The most prized orchid in Elizabeth's collection was the Vanilla planifolia, commonly known as the vanilla orchid. This particular species is native to Mexico and Central America. What makes this orchid fascinating is that it's the only orchid species that produces edible fruit.
 
-Turing's most famous contribution to computer science is the Turing machine, which is a mathematical model of computation. He devised the Turing test as a method to determine if a machine can exhibit intelligent behavior equivalent to, or indistinguishable from, that of a human. The test has proven to be highly influential and controversial in the field of artificial intelligence.`
+Vanilla beans are actually the fermented seed pods of the vanilla orchid. The vanilla flavor comes from a compound called vanillin. Pure vanilla extract must contain at least 35% alcohol by volume in the United States. Most artificial vanilla flavoring is actually made from lignin, a byproduct of paper manufacturing.
+
+Speaking of paper manufacturing, the earliest paper was invented in China during the Han Dynasty. Cai Lun is credited with standardizing the papermaking process around 105 AD. He used mulberry bark, hemp, and old rags to create the first sheets of paper.
+
+Paper production requires significant amounts of water. A typical paper mill consumes about 10 gallons of water per pound of paper produced. This water consumption has led to strict environmental regulations in many countries.
+
+The Environmental Protection Agency was established in the United States in 1970. The EPA's initial budget was approximately $1 billion. The agency's first administrator was William Ruckelshaus, who later became famous for resigning during the Saturday Night Massacre.
+
+The Saturday Night Massacre was a political scandal in 1973 involving President Nixon. Nixon refused to release the Watergate tapes, leading to the resignation of several high-ranking officials. Watergate is a complex office building in Washington D.C. that includes a hotel and apartments.
+
+Apartment buildings in the 1970s often featured shag carpeting and popcorn ceilings. Popcorn ceilings were popular because they were cheap to install and could hide imperfections. However, they often contained asbestos until the practice was banned in 1978.
+
+Asbestos is a naturally occurring mineral fiber that was used for thousands of years. The ancient Egyptians used asbestos to wrap pharaohs during mummification. They believed the material had magical fire-resistant properties.`
     );
   };
 
@@ -151,7 +163,7 @@ Turing's most famous contribution to computer science is the Turing machine, whi
           <li>• The LLM analyzes the text and extracts meaningful commitments</li>
           <li>• Each commitment is assigned a role (FACT, GOAL, CONSTRAINT, etc.)</li>
           <li>• Related commitments are automatically connected based on semantic similarity</li>
-          <li>• Click "Load Sample Text" to see an example with Alan Turing biography</li>
+          <li>• Click "Load Sample Text" to see an example with random tangents (person → wife → orchids → vanilla → paper → EPA → Watergate → asbestos)</li>
         </ul>
       </div>
     </div>
