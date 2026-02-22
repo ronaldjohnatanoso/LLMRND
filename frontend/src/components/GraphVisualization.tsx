@@ -28,6 +28,7 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
   });
   const [hoveredNode, setHoveredNode] = useState<{ node: any; x: number; y: number } | null>(null);
   const [showAllEdges, setShowAllEdges] = useState(true);
+  const [edgeOpacity, setEdgeOpacity] = useState(0.3);
 
   // Build graph state from timeline up to current step
   useEffect(() => {
@@ -329,235 +330,290 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
     if (!containerRef.current) return;
     if (elements.nodes.length === 0) return;
 
-    // Destroy and recreate
-    if (cyRef.current) {
-      cyRef.current.destroy();
-    }
+    const cy = cyRef.current;
 
-    const cy = cytoscape({
-      container: containerRef.current,
-      elements: [...elements.nodes, ...elements.edges] as ElementDefinition[],
-      style: [
-        {
-          selector: "node",
-          style: {
-            "background-color": (ele: any) => roleColors[ele.data("role")] || "#888",
-            label: "data(label)",
-            color: "#fff",
-            "text-valign": "center",
-            "text-halign": "center",
-            width: (ele: any) => baseNodeSize * (0.8 + ele.data("activation") * 0.2),
-            height: (ele: any) => baseNodeSize * (0.8 + ele.data("activation") * 0.2),
-            "font-size": (ele: any) => baseFontSize * 0.8,
-            "font-weight": "bold",
-            "border-width": 2,
-            "border-color": "#fff",
-            "text-outline-width": 1.5,
-            "text-outline-color": "#000",
-            "text-max-width": "50px",
-            "text-wrap": "wrap",
-            "text-overflow-wrap": "anywhere",
-            opacity: 0.6,
-            "transition-property": "border-width, border-color, opacity, width, height, background-color",
-            "transition-duration": 400,
-            "transition-timing-function": "ease-in-out",
+    if (!cy) {
+      // First time initialization
+      const newCy = cytoscape({
+        container: containerRef.current,
+        elements: [...elements.nodes, ...elements.edges] as ElementDefinition[],
+        style: [
+          {
+            selector: "node",
+            style: {
+              "background-color": (ele: any) => roleColors[ele.data("role")] || "#888",
+              label: "data(label)",
+              color: "#fff",
+              "text-valign": "center",
+              "text-halign": "center",
+              width: (ele: any) => baseNodeSize * (0.8 + ele.data("activation") * 0.2),
+              height: (ele: any) => baseNodeSize * (0.8 + ele.data("activation") * 0.2),
+              "font-size": (ele: any) => baseFontSize * 0.8,
+              "font-weight": "bold",
+              "border-width": 2,
+              "border-color": "#fff",
+              "text-outline-width": 1.5,
+              "text-outline-color": "#000",
+              "text-max-width": "50px",
+              "text-wrap": "wrap",
+              "text-overflow-wrap": "anywhere",
+              opacity: 0.6,
+              "transition-property": "border-width, border-color, opacity, width, height, background-color",
+              "transition-duration": 200,
+              "transition-timing-function": "ease-in-out",
+            },
           },
-        },
-        {
-          selector: "node.active-node",
-          style: {
-            opacity: 1,
-            "border-width": 6,
-            "border-color": "#00FF88",
-            "border-opacity": 1,
-            "overlay-color": "#00FF88",
-            "overlay-padding": 8,
-            "overlay-opacity": 0.3,
-            "z-index": 100,
+          {
+            selector: "node.active-node",
+            style: {
+              opacity: 1,
+              "border-width": 6,
+              "border-color": "#00FF88",
+              "border-opacity": 1,
+              "overlay-color": "#00FF88",
+              "overlay-padding": 8,
+              "overlay-opacity": 0.3,
+              "z-index": 100,
+            },
           },
-        },
-        {
-          selector: "node.propagated-node",
-          style: {
-            opacity: 0.7,
-            "border-width": 3,
-            "border-color": "#4A9EFF",
-            "border-opacity": 1,
-            "overlay-color": "#4A9EFF",
-            "overlay-padding": 4,
-            "overlay-opacity": 0.2,
-            "z-index": 50,
+          {
+            selector: "node.propagated-node",
+            style: {
+              opacity: 0.7,
+              "border-width": 3,
+              "border-color": "#4A9EFF",
+              "border-opacity": 1,
+              "overlay-color": "#4A9EFF",
+              "overlay-padding": 4,
+              "overlay-opacity": 0.2,
+              "z-index": 50,
+            },
           },
-        },
-        {
-          selector: "node.failed-gate2",
-          style: {
-            opacity: 0.5,
-            "border-width": 3,
-            "border-color": "#FF6B6B",
-            "border-opacity": 1,
-            "border-style": "dashed",
-            "border-dash-pattern": [4, 2],
-            "overlay-color": "#FF6B6B",
-            "overlay-padding": 3,
-            "overlay-opacity": 0.15,
-            "z-index": 45,
+          {
+            selector: "node.failed-gate2",
+            style: {
+              opacity: 0.5,
+              "border-width": 3,
+              "border-color": "#FF6B6B",
+              "border-opacity": 1,
+              "border-style": "dashed",
+              "border-dash-pattern": [4, 2],
+              "overlay-color": "#FF6B6B",
+              "overlay-padding": 3,
+              "overlay-opacity": 0.15,
+              "z-index": 45,
+            },
           },
-        },
-        {
-          selector: "node.inactive-hop",
-          style: {
-            opacity: 0.4,
-            "border-width": 2,
-            "border-color": "#666",
-            "overlay-color": "#666",
-            "overlay-padding": 2,
-            "overlay-opacity": 0.2,
+          {
+            selector: "node.inactive-hop",
+            style: {
+              opacity: 0.4,
+              "border-width": 2,
+              "border-color": "#666",
+              "overlay-color": "#666",
+              "overlay-padding": 2,
+              "overlay-opacity": 0.2,
+            },
           },
-        },
-        {
-          selector: "edge",
-          style: {
-            width: (ele: any) => 1 + ele.data("strength") * 3,
-            "line-color": "#4ECDC4",
-            "target-arrow-color": "#4ECDC4",
-            "target-arrow-shape": "triangle",
-            "curve-style": "bezier",
-            opacity: (ele: any) => 0.3 + Math.min(0.7, ele.data("strength") * 2),
-            "arrow-scale": 0.8,
-            "transition-property": "width, line-color, target-arrow-color, opacity",
-            "transition-duration": 400,
-            "transition-timing-function": "ease-in-out",
+          {
+            selector: "edge",
+            style: {
+              width: (ele: any) => 1 + ele.data("strength") * 3,
+              "line-color": "#4ECDC4",
+              "target-arrow-color": "#4ECDC4",
+              "target-arrow-shape": "triangle",
+              "curve-style": "bezier",
+              opacity: edgeOpacity,
+              "arrow-scale": 0.8,
+              "transition-property": "width, line-color, target-arrow-color, opacity",
+              "transition-duration": 200,
+              "transition-timing-function": "ease-in-out",
+            },
           },
-        },
-        {
-          selector: "edge.new-edge",
-          style: {
-            "line-color": "#FFD700",
-            "target-arrow-color": "#FFD700",
-            "line-style": "dashed",
-            "line-dash-pattern": [6, 3],
+          {
+            selector: "edge.new-edge",
+            style: {
+              "line-color": "#FFD700",
+              "target-arrow-color": "#FFD700",
+              "line-style": "dashed",
+              "line-dash-pattern": [6, 3],
+            },
           },
+        ],
+        layout: {
+          name: "preset",
         },
-      ],
-      layout: {
-        name: "preset",
-      },
-      minZoom: 0.3,
-      maxZoom: 3,
-    });
-
-    cyRef.current = cy;
-
-    // Only fit on initial creation, use a ref to track
-    if (!cyRef.current.hasOwnProperty("_fitted")) {
-      setTimeout(() => {
-        cy.fit(undefined, 50);
-        (cyRef.current as any)._fitted = true;
-      }, 100);
-    }
-
-    // Add hover event handlers
-    cy.on("mouseover", "node", (evt) => {
-      const node = evt.target;
-      const pos = node.renderedPosition();
-      const data = node.data();
-
-      // Get full text from timeline data or final states
-      let fullText = data.label;
-
-      // First check timeline nodes_data (Layer 1 nodes)
-      const allTimelineNodes = simulation.timeline.flatMap(step => step.nodes_data || []);
-      let nodeData = allTimelineNodes.find(n => n.id === data.id);
-      if (nodeData?.text) {
-        fullText = nodeData.text;
-      }
-
-      // If not found in timeline, check final_states (hop/propagated nodes)
-      if (!nodeData) {
-        const allFinalStates = simulation.final_states || [];
-        const finalNode = allFinalStates.find(n => n.id === data.id);
-        if (finalNode?.text) {
-          fullText = finalNode.text;
-        }
-      }
-
-      // Get neighbor count
-      const neighborhood = node.neighborhood().nodes();
-      const neighborCount = neighborhood.length - 1; // Exclude the node itself
-
-      // Collect propagation events for this node UP TO CURRENT STEP ONLY
-      const propagationsToThisNode: Array<{
-        fromId: string;
-        fromText: string;
-        delta: number;
-        oldActivation: number;
-        newActivation: number;
-        hop: number;
-        edgeWeight: number;
-        roleBoost: number;
-        decayFactor: number;
-      }> = [];
-      let totalDeltaReceived = 0;
-      let timesReceived = 0;
-
-      for (let stepIdx = 0; stepIdx <= currentStep; stepIdx++) {
-        const step = simulation.timeline[stepIdx];
-        if (step.type === "propagation" && step.child_id === data.id) {
-          totalDeltaReceived += step.delta || 0;
-          timesReceived++;
-
-          // Get parent node info
-          const parentNode = simulation.final_states?.find(n => n.id === step.parent_id);
-          propagationsToThisNode.push({
-            fromId: step.parent_id || "",
-            fromText: parentNode?.text || "Unknown",
-            delta: step.delta || 0,
-            oldActivation: step.old_activation || 0,
-            newActivation: step.new_activation || 0,
-            hop: step.hop || 0,
-            edgeWeight: step.edge_weight || 0,
-            roleBoost: step.role_boost || 1.0,
-            decayFactor: step.decay_factor || 1.0,
-          });
-        }
-      }
-
-      setHoveredNode({
-        node: {
-          ...data,
-          fullText,
-          neighborCount,
-          activated: data.wasActivated || false,
-          propagated: (data as any).propagated || false,
-          totalDeltaReceived,
-          timesReceived,
-          propagations: propagationsToThisNode,
-        },
-        x: pos.x,
-        y: pos.y,
+        minZoom: 0.3,
+        maxZoom: 3,
       });
-    });
 
-    cy.on("mouseout", "node", () => {
-      // Don't hide immediately if mouse is moving to tooltip
+      cyRef.current = newCy;
+
+      // Fit on initial creation
       setTimeout(() => {
-        if (!hoveredNode?.node) return;
-        // Check if mouse is still over tooltip
-        const tooltip = document.querySelector('[data-tooltip="true"]');
-        if (tooltip && !tooltip.matches(':hover')) {
-          setHoveredNode(null);
-        }
+        newCy.fit(undefined, 50);
       }, 100);
-    });
 
-    return () => {
-      if (cyRef.current) {
-        cyRef.current.destroy();
-        cyRef.current = null;
-      }
-    };
-  }, [elements, baseNodeSize, baseFontSize, simulation]);
+      // Add hover event handlers
+      newCy.on("mouseover", "node", (evt) => {
+        const node = evt.target;
+        const pos = node.renderedPosition();
+        const data = node.data();
+
+        // Get full text from timeline data or final states
+        let fullText = data.label;
+
+        // First check timeline nodes_data (Layer 1 nodes)
+        const allTimelineNodes = simulation.timeline.flatMap(step => step.nodes_data || []);
+        let nodeData = allTimelineNodes.find(n => n.id === data.id);
+        if (nodeData?.text) {
+          fullText = nodeData.text;
+        }
+
+        // If not found in timeline, check final_states (hop/propagated nodes)
+        if (!nodeData) {
+          const allFinalStates = simulation.final_states || [];
+          const finalNode = allFinalStates.find(n => n.id === data.id);
+          if (finalNode?.text) {
+            fullText = finalNode.text;
+          }
+        }
+
+        // Get neighbor count
+        const neighborhood = node.neighborhood().nodes();
+        const neighborCount = neighborhood.length - 1; // Exclude the node itself
+
+        // Collect propagation events for this node UP TO CURRENT STEP ONLY
+        const propagationsToThisNode: Array<{
+          fromId: string;
+          fromText: string;
+          delta: number;
+          oldActivation: number;
+          newActivation: number;
+          hop: number;
+          edgeWeight: number;
+          roleBoost: number;
+          decayFactor: number;
+        }> = [];
+        let totalDeltaReceived = 0;
+        let timesReceived = 0;
+
+        for (let stepIdx = 0; stepIdx <= currentStep; stepIdx++) {
+          const step = simulation.timeline[stepIdx];
+          if (step.type === "propagation" && step.child_id === data.id) {
+            totalDeltaReceived += step.delta || 0;
+            timesReceived++;
+
+            // Get parent node info
+            const parentNode = simulation.final_states?.find(n => n.id === step.parent_id);
+            propagationsToThisNode.push({
+              fromId: step.parent_id || "",
+              fromText: parentNode?.text || "Unknown",
+              delta: step.delta || 0,
+              oldActivation: step.old_activation || 0,
+              newActivation: step.new_activation || 0,
+              hop: step.hop || 0,
+              edgeWeight: step.edge_weight || 0,
+              roleBoost: step.role_boost || 1.0,
+              decayFactor: step.decay_factor || 1.0,
+            });
+          }
+        }
+
+        setHoveredNode({
+          node: {
+            ...data,
+            fullText,
+            neighborCount,
+            activated: data.wasActivated || false,
+            propagated: (data as any).propagated || false,
+            totalDeltaReceived,
+            timesReceived,
+            propagations: propagationsToThisNode,
+          },
+          x: pos.x,
+          y: pos.y,
+        });
+      });
+
+      newCy.on("mouseout", "node", () => {
+        // Don't hide immediately if mouse is moving to tooltip
+        setTimeout(() => {
+          if (!hoveredNode?.node) return;
+          // Check if mouse is still over tooltip
+          const tooltip = document.querySelector('[data-tooltip="true"]');
+          if (tooltip && !tooltip.matches(':hover')) {
+            setHoveredNode(null);
+          }
+        }, 100);
+      });
+
+      return () => {
+        if (cyRef.current) {
+          cyRef.current.destroy();
+          cyRef.current = null;
+        }
+      };
+    } else {
+      // Update existing graph smoothly using batch
+      cy.startBatch();
+
+      // Get current elements in the graph
+      const currentNodes = new Set(cy.nodes().map(n => n.id()));
+      const currentEdges = new Set(cy.edges().map(e => e.id()));
+
+      // Add new nodes
+      elements.nodes.forEach(node => {
+        if (!currentNodes.has(node.data.id)) {
+          cy.add({
+            group: "nodes",
+            data: node.data,
+            position: node.position,
+            classes: node.classes,
+          } as any);
+        } else {
+          // Update existing node
+          const cyNode = cy.getElementById(node.data.id);
+          if (cyNode) {
+            cyNode.data(node.data);
+            cyNode.classes(node.classes || "");
+          }
+        }
+      });
+
+      // Add new edges
+      elements.edges.forEach(edge => {
+        if (!currentEdges.has(edge.data.id)) {
+          cy.add({
+            group: "edges",
+            data: edge.data,
+            classes: edge.classes,
+          } as any);
+        } else {
+          // Update existing edge classes
+          const cyEdge = cy.getElementById(edge.data.id);
+          if (cyEdge) {
+            cyEdge.classes(edge.classes || "");
+          }
+        }
+      });
+
+      // Remove nodes/edges that are no longer in elements
+      cy.nodes().forEach(node => {
+        if (!elements.nodes.some(n => n.data.id === node.id())) {
+          cy.remove(node);
+        }
+      });
+
+      cy.edges().forEach(edge => {
+        if (!elements.edges.some(e => e.data.id === edge.id())) {
+          cy.remove(edge);
+        }
+      });
+
+      cy.endBatch();
+    }
+  }, [elements, baseNodeSize, baseFontSize, edgeOpacity, simulation, currentStep, hoveredNode]);
 
   return (
     <div className="relative w-full h-[600px] bg-slate-900 rounded-lg overflow-hidden border border-slate-700">
@@ -565,22 +621,44 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
       <div className="absolute top-3 left-3 z-40 bg-slate-800/95 backdrop-blur-sm rounded-lg p-3 border border-slate-600 text-xs space-y-3">
         <div className="font-semibold text-white mb-2">Legend</div>
 
-        {/* Edge toggle */}
-        <button
-          onClick={() => setShowAllEdges(!showAllEdges)}
-          className={`w-full px-3 py-2 rounded text-left transition-all ${
-            showAllEdges
-              ? "bg-cyan-900/50 border border-cyan-600 text-cyan-300"
-              : "bg-slate-700/50 border border-slate-600 text-slate-400 hover:bg-slate-700"
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span>{showAllEdges ? "All Edges" : "Current Edges"}</span>
-            <span className="text-[10px] opacity-70">
-              {showAllEdges ? "(🕸️)" : "(📍)"}
-            </span>
-          </div>
-        </button>
+        {/* Controls */}
+        <div className="space-y-2">
+          {/* Edge visibility toggle */}
+          <button
+            onClick={() => setShowAllEdges(!showAllEdges)}
+            className={`w-full px-3 py-2 rounded text-left transition-all ${
+              showAllEdges
+                ? "bg-cyan-900/50 border border-cyan-600 text-cyan-300"
+                : "bg-slate-700/50 border border-slate-600 text-slate-400 hover:bg-slate-700"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span>{showAllEdges ? "All Edges" : "Current Edges"}</span>
+              <span className="text-[10px] opacity-70">
+                {showAllEdges ? "(🕸️)" : "(📍)"}
+              </span>
+            </div>
+          </button>
+
+          {/* Edge opacity toggle */}
+          <button
+            onClick={() => setEdgeOpacity(edgeOpacity === 0.3 ? 0.1 : edgeOpacity === 0.1 ? 0.05 : 0.3)}
+            className={`w-full px-3 py-2 rounded text-left transition-all ${
+              edgeOpacity === 0.3
+                ? "bg-purple-900/50 border border-purple-600 text-purple-300"
+                : edgeOpacity === 0.1
+                  ? "bg-purple-900/30 border border-purple-700 text-purple-400"
+                  : "bg-slate-700/50 border border-slate-600 text-slate-400 hover:bg-slate-700"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span>Edge Opacity</span>
+              <span className="text-[10px] font-mono">
+                {edgeOpacity === 0.3 ? "30%" : edgeOpacity === 0.1 ? "10%" : "5%"}
+              </span>
+            </div>
+          </button>
+        </div>
 
         <div className="space-y-2">
           <div className="flex items-center gap-2">
