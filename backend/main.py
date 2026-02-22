@@ -25,7 +25,6 @@ sys.path.insert(0, PARENT_DIR)
 
 from cog_memory.query_interface import CognitiveMemory
 from cog_memory.node import Role
-from cog_memory.graph import CognitiveGraph
 
 # Global memory instance
 memory = None
