@@ -33,9 +33,35 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
     const edges: GraphEdge[] = [];
     const nodeMap = new Map<string, GraphNode>();
 
-    // Track layer structure
+    // Track layer structure and active nodes for current step
     const layerStructure = new Map<number, string[]>();
     layerStructure.set(0, ["query"]);
+
+    // Determine active node IDs for current step
+    const activeNodeIds = new Set<string>();
+    const currentStepData = simulation.timeline[currentStep];
+
+    if (currentStepData) {
+      // Add nodes based on step type
+      if (currentStepData.type === "search") {
+        activeNodeIds.add("query");
+      } else if (currentStepData.type === "layer_1") {
+        activeNodeIds.add("query");
+        const nodesData = currentStepData.nodes_data || [];
+        nodesData.forEach(n => activeNodeIds.add(n.id));
+      } else if (currentStepData.type === "hop_start") {
+        const hop = currentStepData.hop || 1;
+        activeNodeIds.add("query");
+        // Add layer 1 nodes
+        const layer1Step = simulation.timeline.find(s => s.type === "layer_1");
+        if (layer1Step?.nodes_data) {
+          layer1Step.nodes_data.forEach(n => activeNodeIds.add(n.id));
+        }
+      } else if (currentStepData.type === "propagation") {
+        activeNodeIds.add(currentStepData.parent_id || "");
+        activeNodeIds.add(currentStepData.child_id || "");
+      }
+    }
 
     // Process timeline up to current step
     for (let stepIdx = 0; stepIdx <= currentStep; stepIdx++) {
@@ -44,6 +70,7 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
 
       if (stepType === "search") {
         // Add query node
+        const isActive = activeNodeIds.has("query");
         nodeMap.set("query", {
           data: {
             id: "query",
@@ -52,7 +79,9 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
             activation: 1.0,
             layer: 0,
             stepAdded: stepIdx,
+            isActive,
           },
+          classes: isActive ? "active-node" : "",
         });
       } else if (stepType === "layer_1") {
         const nodesData = stepData.nodes_data || [];
@@ -62,6 +91,7 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
           if (!nodeMap.has(nodeData.id)) {
             const spread = nodesData.length > 1 ? 80 / (nodesData.length - 1) : 0;
             const x = nodesData.length > 1 ? -40 + i * spread : 0;
+            const isActive = activeNodeIds.has(nodeData.id);
 
             nodeMap.set(nodeData.id, {
               data: {
@@ -71,8 +101,10 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
                 activation: nodeData.activation,
                 layer: 1,
                 stepAdded: stepIdx,
+                isActive,
               },
               position: { x: x * 10, y: 150 },
+              classes: isActive ? "active-node" : "",
             });
             layerStructure.set(1, [...(layerStructure.get(1) || []), nodeData.id]);
 
@@ -108,6 +140,7 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
             const r = Math.floor(100 + 155 * intensity);
             const g = Math.floor(200 - 100 * intensity);
             const b = 150;
+            const isActive = activeNodeIds.has(childId);
 
             nodeMap.set(childId, {
               data: {
@@ -117,10 +150,20 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
                 activation: delta,
                 layer: hop + 1,
                 stepAdded: stepIdx,
+                isActive,
               },
               position: { x: Math.max(-200, Math.min(200, x)), y: 150 + hop * 120 },
-              classes: "newly-activated",
+              classes: `${newlyActivated ? "newly-activated" : ""} ${isActive ? "active-node" : ""}`.trim(),
             });
+          }
+
+          // Update active state for existing parent node
+          if (nodeMap.has(parentId) && activeNodeIds.has(parentId)) {
+            const parentNode = nodeMap.get(parentId);
+            if (parentNode) {
+              parentNode.data.isActive = true;
+              parentNode.classes = `${parentNode.classes || ""} active-node`.trim();
+            }
           }
 
           edges.push({
@@ -171,6 +214,22 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
             "text-outline-color": "#000",
             "text-max-width": "80px",
             "text-wrap": "wrap",
+            opacity: 0.6,
+            "transition-property": "border-width, border-color, opacity, width, height",
+            "transition-duration": "0.3s",
+          },
+        },
+        {
+          selector: "node.active-node",
+          style: {
+            opacity: 1,
+            "border-width": 6,
+            "border-color": "#00FF88",
+            "border-opacity": 1,
+            "overlay-color": "#00FF88",
+            "overlay-padding": 8,
+            "overlay-opacity": 0.3,
+            "z-index": 100,
           },
         },
         {
@@ -179,6 +238,9 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
             "border-width": 4,
             "border-color": "#FFD700",
             "border-opacity": 0.8,
+            "overlay-color": "#FFD700",
+            "overlay-padding": 6,
+            "overlay-opacity": 0.4,
           },
         },
         {

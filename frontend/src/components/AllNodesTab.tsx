@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getNodes } from "@/lib/api";
+import { getNodes, clearMemory } from "@/lib/api";
 import { Node } from "@/types";
 
 interface AllNodesTabProps {
@@ -24,6 +24,8 @@ export default function AllNodesTab({ onSelectNode }: AllNodesTabProps) {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
   const [sortBy, setSortBy] = useState<"activation" | "confidence" | "text">("activation");
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     loadNodes();
@@ -42,6 +44,26 @@ export default function AllNodesTab({ onSelectNode }: AllNodesTabProps) {
       console.error("Error loading nodes:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResetDatabase = async () => {
+    if (!showResetConfirm) {
+      setShowResetConfirm(true);
+      return;
+    }
+
+    setResetting(true);
+    try {
+      await clearMemory();
+      setNodes([]);
+      setShowResetConfirm(false);
+      alert("✅ Database cleared successfully!");
+    } catch (error) {
+      console.error("Error clearing database:", error);
+      alert("❌ Failed to clear database. Check if backend is running.");
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -116,7 +138,41 @@ export default function AllNodesTab({ onSelectNode }: AllNodesTabProps) {
         >
           Refresh
         </button>
+
+        <button
+          onClick={handleResetDatabase}
+          disabled={resetting}
+          className={`px-4 py-2 rounded-lg transition-all ${
+            showResetConfirm
+              ? "bg-red-600 hover:bg-red-700"
+              : "bg-slate-700 hover:bg-slate-600"
+          } disabled:opacity-50 disabled:cursor-not-allowed`}
+        >
+          {resetting ? "Clearing..." : showResetConfirm ? "⚠️ Confirm Reset" : "🗑️ Reset Database"}
+        </button>
       </div>
+
+      {showResetConfirm && (
+        <div className="bg-red-900/20 border border-red-800 rounded-lg p-4">
+          <p className="text-red-300 mb-2">⚠️ <strong>Warning:</strong> This will permanently delete all nodes from the database!</p>
+          <p className="text-slate-400 text-sm mb-3">This action cannot be undone. All stored commitments will be lost.</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowResetConfirm(false)}
+              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-all text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => handleResetDatabase()}
+              disabled={resetting}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-all text-sm"
+            >
+              {resetting ? "Deleting..." : "Yes, Delete All"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">

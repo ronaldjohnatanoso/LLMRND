@@ -21,6 +21,14 @@ export default function Home() {
   const [selectedNode, setSelectedNode] = useState<NodeType | null>(null);
   const [selectedNodeNeighbors, setSelectedNodeNeighbors] = useState<NodeType[]>([]);
 
+  // Query parameters
+  const [topK, setTopK] = useState(5);
+  const [propagationDepth, setPropagationDepth] = useState(2);
+  const [minSimilarityThreshold, setMinSimilarityThreshold] = useState(0.55);
+  const [candidateMultiplier, setCandidateMultiplier] = useState(2);
+  const [decayPerHop, setDecayPerHop] = useState(0.7);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+
   // Load total nodes on mount
   useEffect(() => {
     refreshNodeCount();
@@ -42,11 +50,11 @@ export default function Home() {
     try {
       const result = await querySimulation({
         query_text: query,
-        top_k: 5,
-        propagation_depth: 2,
-        min_similarity_threshold: 0.55,
-        candidate_multiplier: 2,
-        decay_per_hop: 0.7,
+        top_k: topK,
+        propagation_depth: propagationDepth,
+        min_similarity_threshold: minSimilarityThreshold,
+        candidate_multiplier: candidateMultiplier,
+        decay_per_hop: decayPerHop,
       });
       setSimulation(result);
       setCurrentStep(0);
@@ -164,9 +172,97 @@ export default function Home() {
                   {loading ? "Thinking..." : "Query"}
                 </button>
               </div>
-              <p className="text-slate-400 text-sm">
-                Advanced query with step-by-step propagation visualization
-              </p>
+
+              {/* Basic Parameters */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center gap-3">
+                  <label className="text-slate-400 text-sm whitespace-nowrap">Top K:</label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    value={topK}
+                    onChange={(e) => setTopK(parseInt(e.target.value))}
+                    className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
+                  <span className="text-white font-mono w-8 text-center">{topK}</span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <label className="text-slate-400 text-sm whitespace-nowrap">Depth:</label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    value={propagationDepth}
+                    onChange={(e) => setPropagationDepth(parseInt(e.target.value))}
+                    className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
+                  <span className="text-white font-mono w-8 text-center">{propagationDepth}</span>
+                </div>
+              </div>
+
+              {/* Advanced Settings Toggle */}
+              <button
+                onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+                className="text-slate-400 text-sm hover:text-white transition-colors flex items-center gap-2"
+              >
+                <span>{showAdvancedSettings ? "▼" : "▶"}</span>
+                <span>Advanced Settings</span>
+              </button>
+
+              {showAdvancedSettings && (
+                <div className="bg-slate-900/50 rounded-lg p-4 space-y-4 border border-slate-700">
+                  <div className="flex items-center gap-3">
+                    <label className="text-slate-400 text-sm whitespace-nowrap w-48">Min Similarity:</label>
+                    <input
+                      type="range"
+                      min="0.30"
+                      max="0.75"
+                      step="0.05"
+                      value={minSimilarityThreshold}
+                      onChange={(e) => setMinSimilarityThreshold(parseFloat(e.target.value))}
+                      className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                    />
+                    <span className="text-white font-mono w-14 text-center">{minSimilarityThreshold.toFixed(2)}</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <label className="text-slate-400 text-sm whitespace-nowrap w-48">Candidate Multiplier:</label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="5"
+                      step="1"
+                      value={candidateMultiplier}
+                      onChange={(e) => setCandidateMultiplier(parseInt(e.target.value))}
+                      className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                    />
+                    <span className="text-white font-mono w-14 text-center">{candidateMultiplier}x</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <label className="text-slate-400 text-sm whitespace-nowrap w-48">Decay Per Hop:</label>
+                    <input
+                      type="range"
+                      min="0.3"
+                      max="1.0"
+                      step="0.1"
+                      value={decayPerHop}
+                      onChange={(e) => setDecayPerHop(parseFloat(e.target.value))}
+                      className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                    />
+                    <span className="text-white font-mono w-14 text-center">{decayPerHop.toFixed(1)}</span>
+                  </div>
+
+                  <div className="text-slate-500 text-xs grid grid-cols-2 gap-2">
+                    <div>• <strong>Min Similarity:</strong> Filter out weak matches</div>
+                    <div>• <strong>Candidate Multiplier:</strong> How many extra candidates to consider per hop</div>
+                    <div>• <strong>Decay Per Hop:</strong> How much activation decreases per hop</div>
+                    <div>• <strong>Depth:</strong> How many hops to propagate activation</div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Simulation Results */}
