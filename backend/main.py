@@ -152,7 +152,7 @@ async def get_all_nodes():
                 role=record.get("role", "FACT"),
                 activation=record.get("activation", 0.0),
                 confidence=record.get("confidence", 0.0),
-                neighbors=record.get("neighbors", [])
+                neighbors=list(record.get("neighbors", {}).keys())
             )
             for record in node_records
         ]
