@@ -30,6 +30,261 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
   const [showAllEdges, setShowAllEdges] = useState(true);
   const [edgeOpacity, setEdgeOpacity] = useState(0.3);
 
+  // Store stable positions that persist across step changes
+  const stablePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map>());
+
+  // Build ALL nodes and edges ONCE from the full simulation (not per-step)
+  const fullGraphState = useMemo(() => {
+    const nodes: GraphNode[] = [];
+    const edges: GraphEdge[] = [];
+    const nodeMap = new Map<string, GraphNode>();
+
+    // Track nodes by layer for better positioning
+    const layerNodes = new Map<number, string[]>();
+    layerNodes.set(0, ["query"]);
+
+    // Track positions used to avoid overlap
+    const usedPositions = new Map<string, Set<string>>(); // layer -> "x,y" -> true
+
+    // Helper to find next available position in a layer
+    const findAvailablePosition = (layer: number, preferredX: number, y: number, nodeId: string) => {
+      // Check if we already have a stable position for this node
+      if (stablePositionsRef.current.has(nodeId)) {
+        return stablePositionsRef.current.get(nodeId)!;
+      }
+
+      const layerPositions = usedPositions.get(String(layer)) || new Set();
+      const spacing = 45;
+      const maxX = 250;
+
+      const gridX = Math.round(preferredX / spacing) * spacing;
+      const gridY = Math.round(y / spacing) * spacing;
+      const key = `${gridX},${gridY}`;
+
+      if (!layerPositions.has(key)) {
+        layerPositions.add(key);
+        usedPositions.set(String(layer), layerPositions);
+        const pos = { x: gridX, y };
+        stablePositionsRef.current.set(nodeId, pos);
+        return pos;
+      }
+
+      for (let radius = 1; radius < 20; radius++) {
+        for (let angle = 0; angle < 360; angle += 45) {
+          const rad = (angle * Math.PI) / 180;
+          const testX = Math.round((preferredX + radius * spacing * Math.cos(rad)) / spacing) * spacing;
+          const testY = Math.round((y + radius * spacing * Math.sin(rad)) / spacing) * spacing;
+          const testKey = `${testX},${testY}`;
+
+          if (!layerPositions.has(testKey) && Math.abs(testX) < maxX) {
+            layerPositions.add(testKey);
+            usedPositions.set(String(layer), layerPositions);
+            const pos = { x: testX, y: testY };
+            stablePositionsRef.current.set(nodeId, pos);
+            return pos;
+          }
+        }
+      }
+
+      return { x: preferredX, y };
+    };
+
+    // Process the ENTIRE timeline to build complete graph
+    for (let stepIdx = 0; stepIdx < simulation.timeline.length; stepIdx++) {
+      const stepData = simulation.timeline[stepIdx];
+      const stepType = stepData.type;
+
+      if (stepType === "search") {
+        if (!nodeMap.has("query")) {
+          nodeMap.set("query", {
+            data: {
+              id: "query",
+              label: simulation.query.substring(0, 30),
+              role: "QUERY",
+              activation: 1.0,
+              layer: 0,
+              stepAdded: stepIdx,
+            },
+            classes: "inactive-hop",
+          });
+        }
+      } else if (stepType === "layer_1") {
+        const nodesData = stepData.nodes_data || [];
+        layerNodes.set(1, []);
+
+        nodesData.forEach((nodeData, i) => {
+          if (!nodeMap.has(nodeData.id)) {
+            const spread = nodesData.length > 1 ? 100 / nodesData.length : 0;
+            const preferredX = nodesData.length > 1 ? -50 + i * spread : 0;
+            const y = 120;
+            const pos = findAvailablePosition(1, preferredX, y, nodeData.id);
+
+            nodeMap.set(nodeData.id, {
+              data: {
+                id: nodeData.id,
+                label: nodeData.text.substring(0, 12) + (nodeData.text.length > 12 ? "..." : ""),
+                role: nodeData.role,
+                activation: nodeData.activation,
+                layer: 1,
+                stepAdded: stepIdx,
+              },
+              position: { x: pos.x * 10, y },
+              classes: "inactive-hop",
+            });
+
+            edges.push({
+              data: {
+                id: `query-${nodeData.id}`,
+                source: "query",
+                target: nodeData.id,
+                strength: nodeData.activation,
+                stepAdded: stepIdx,
+              },
+            });
+          }
+        });
+      } else if (stepType === "propagation") {
+        const parentId = stepData.parent_id || "";
+        const childId = stepData.child_id || "";
+        const hop = stepData.hop || 1;
+
+        const parent = nodeMap.get(parentId);
+        if (parent && parentId !== "query" && !nodeMap.has(childId)) {
+          let labelText = `L${hop + 1}`;
+          let nodeRole = "PROPAGATED";
+          const allFinalStates = simulation.final_states || [];
+          const finalNode = allFinalStates.find(n => n.id === childId);
+          if (finalNode?.text) {
+            labelText = finalNode.text.substring(0, 20) + (finalNode.text.length > 20 ? "..." : "");
+          }
+          if (finalNode?.role) {
+            nodeRole = finalNode.role;
+          }
+
+          const parentX = parent.position?.x || 0;
+          const parentY = parent.position?.y || 0;
+          const layer = hop + 1;
+          const y = parentY + 100;
+
+          const existingInLayer = layerNodes.get(layer) || [];
+          const spread = existingInLayer.length > 0 ? 100 / (existingInLayer.length + 1) : 0;
+          const preferredX = parentX + (existingInLayer.length % 2 === 0 ? (existingInLayer.length + 1) * spread : -(existingInLayer.length + 1) * spread);
+
+          const pos = findAvailablePosition(layer, preferredX, y, childId);
+
+          nodeMap.set(childId, {
+            data: {
+              id: childId,
+              label: labelText.substring(0, 12) + (labelText.length > 12 ? "..." : ""),
+              role: nodeRole,
+              activation: stepData.delta || 0,
+              layer: hop + 1,
+              stepAdded: stepIdx,
+            },
+            position: { x: pos.x, y: pos.y },
+            classes: "inactive-hop",
+          });
+
+          layerNodes.set(layer, [...existingInLayer, childId]);
+        }
+
+        edges.push({
+          data: {
+            id: `${parentId}-${childId}-${stepIdx}`,
+            source: parentId,
+            target: childId,
+            strength: stepData.delta || 0,
+            stepAdded: stepIdx,
+          },
+        });
+      }
+    }
+
+    nodes.push(...Array.from(nodeMap.values()));
+    return { nodes, edges };
+  }, [simulation]);
+
+  // Calculate which nodes should be visible and their classes for current step
+  const currentStepState = useMemo(() => {
+    const activeNodeIds = new Set<string>();
+    const propagatedIds = new Set<string>();
+    const failedGate2Ids = new Set<string<string>();
+    const visibleEdgeIds = new Set<string>();
+
+    const currentStepData = simulation.timeline[currentStep];
+
+    for (let stepIdx = 0; stepIdx <= currentStep; stepIdx++) {
+      const step = simulation.timeline[stepIdx];
+
+      if (step.type === "search") {
+        activeNodeIds.add("query");
+      } else if (step.type === "layer_1") {
+        activeNodeIds.add("query");
+        const nodesData = step.nodes_data || [];
+        nodesData.forEach(n => activeNodeIds.add(n.id));
+      } else if (step.type === "hop_start") {
+        activeNodeIds.add("query");
+        const layer1Step = simulation.timeline.find(s => s.type === "layer_1");
+        if (layer1Step?.nodes_data) {
+          layer1Step.nodes_data.forEach(n => activeNodeIds.add(n.id));
+        }
+      } else if (step.type === "propagation") {
+        if (step.newly_activated === true) {
+          activeNodeIds.add(step.child_id || "");
+        }
+        if (step.newly_activated === true) {
+          propagatedIds.add(step.parent_id || "");
+        }
+      } else if (step.type === "gate_2_fail") {
+        failedGate2Ids.add(step.node_id || "");
+      }
+    }
+
+    // Determine visible edges
+    fullGraphState.edges.forEach(edge => {
+      if (edge.data.stepAdded === currentStep) {
+        visibleEdgeIds.add(edge.data.id);
+      } else {
+        const sourceIsActive = activeNodeIds.has(edge.data.source);
+        const targetIsActive = activeNodeIds.has(edge.data.target);
+        if (sourceIsActive || targetIsActive) {
+          visibleEdgeIds.add(edge.data.id);
+        }
+      }
+    });
+
+    return { activeNodeIds, propagatedIds, failedGate2Ids, visibleEdgeIds };
+  }, [simulation, currentStep, showAllEdges, fullGraphState]);
+
+  // Apply current step state to update classes (no structural changes)
+  const elements = useMemo(() => {
+    const activeNodeIds = currentStepState.activeNodeIds;
+    const propagatedIds = currentStepState.propagatedIds;
+    const failedGate2Ids = currentStepState.failedGate2Ids;
+    const visibleEdgeIds = currentStepState.visibleEdgeIds;
+
+    return {
+      nodes: fullGraphState.nodes.map(node => ({
+        ...node,
+        data: {
+          ...node.data,
+          isActive: activeNodeIds.has(node.data.id),
+          wasActivated: true, // All nodes in graph are activated by current step
+          propagated: propagatedIds.has(node.data.id),
+          failedGate2: failedGate2Ids.has(node.data.id),
+        },
+        classes: activeNodeIds.has(node.data.id)
+          ? "active-node"
+          : propagatedIds.has(node.data.id)
+            ? "propagated-node"
+            : failedGate2Ids.has(node.data.id)
+              ? "failed-gate2"
+              : "inactive-hop",
+      })),
+      edges: fullGraphState.edges.filter(edge => visibleEdgeIds.has(edge.data.id)),
+    };
+  }, [fullGraphState, currentStepState]);
+
   // Build graph state from timeline up to current step
   useEffect(() => {
     const nodes: GraphNode[] = [];
