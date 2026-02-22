@@ -128,6 +128,11 @@ CRITICAL REQUIREMENTS:
 - Do NOT extract partial phrases or segments
 - Each commitment MUST be a standalone, meaningful statement
 - Prioritize quality over quantity - better to miss a commitment than extract a bad one
+- CRITICAL: Each extracted commitment must be INDEPENDENT and SELF-CONTAINED
+- Do NOT extract sentences that start with pronouns (it, they, he, she, this, that) without context
+- Do NOT extract sentences that rely on previous sentences for meaning
+- Replace pronouns with the actual noun they refer to when extracting
+- If a sentence cannot be made independent, do NOT extract it
 
 Examples of GOOD extractions:
 Input: "The system requires 50 TB of storage and must maintain 99.99% uptime."
@@ -145,6 +150,17 @@ Input: "Due to budget constraints, we cannot use enterprise tools and must use o
 ✓ Extract: "we must use open source alternatives" (decision)
 ✗ DO NOT extract: "budget constraints"
 ✗ DO NOT extract: "enterprise tools"
+
+Input: "Banana is a very popular fruit. It is consumed in fresh or cooked form both as ripe and raw fruit."
+✓ Extract: "Banana is a very popular fruit" (observation)
+✓ Extract: "Banana is consumed in fresh or cooked form both as ripe and raw fruit" (fact)
+✗ DO NOT extract: "It is consumed in fresh or cooked form" ❌ NOT INDEPENDENT (uses "It" without context)
+✗ DO NOT extract: "both as ripe and raw fruit" ❌ NOT A COMPLETE THOUGHT
+
+Input: "Charles Babbage invented the analytical engine. He is considered the father of computers."
+✓ Extract: "Charles Babbage invented the analytical engine" (fact)
+✓ Extract: "Charles Babbage is considered the father of computers" (fact)
+✗ DO NOT extract: "He is considered the father of computers" ❌ NOT INDEPENDENT (uses "He" without context)
 
 For each commitment, provide:
 1. text: A complete, standalone sentence (minimum 15 characters, complete thought)
@@ -222,6 +238,13 @@ Response:"""
                 words = node_text.split()
                 if len(words) < 3:
                     print(f"⚠️ Skipping commitment with too few words: '{node_text[:50]}...'")
+                    continue
+
+                # Validate independence - check if starts with pronoun (indicates dependency on context)
+                first_word_lower = words[0].lower()
+                pronouns = {"it", "they", "he", "she", "this", "that", "these", "those", "its", "his", "her", "their", "my", "your", "our", "we", "you"}
+                if first_word_lower in pronouns:
+                    print(f"⚠️ Skipping non-independent commitment (starts with pronoun '{words[0]}'): '{node_text[:50]}...'")
                     continue
 
                 nodes.append(
@@ -307,6 +330,13 @@ Response:"""
             words = node_text.split()
             if len(words) < 3:
                 print(f"⚠️ Skipping commitment with too few words: '{node_text[:50]}...'")
+                continue
+
+            # Validate independence - check if starts with pronoun (indicates dependency on context)
+            first_word_lower = words[0].lower()
+            pronouns = {"it", "they", "he", "she", "this", "that", "these", "those", "its", "his", "her", "their", "my", "your", "our", "we", "you"}
+            if first_word_lower in pronouns:
+                print(f"⚠️ Skipping non-independent commitment (starts with pronoun '{words[0]}'): '{node_text[:50]}...'")
                 continue
 
             nodes.append(
