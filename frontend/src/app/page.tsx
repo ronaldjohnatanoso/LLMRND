@@ -4,14 +4,15 @@ import { useState, useEffect } from "react";
 import GraphVisualization from "@/components/GraphVisualization";
 import AllNodesTab from "@/components/AllNodesTab";
 import AddNodesTab from "@/components/AddNodesTab";
+import SemanticSearchTab from "@/components/SemanticSearchTab";
 import NodeDetailsPanel from "@/components/NodeDetailsPanel";
 import { querySimulation, getNodes } from "@/lib/api";
 import { SimulationResponse, Node as NodeType } from "@/types";
 
-type TabType = "query" | "nodes" | "add";
+type TabType = "query" | "nodes" | "search" | "add";
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<TabType>("query");
+  const [activeTab, setActiveTab] = useState<TabType>("nodes");
   const [query, setQuery] = useState("father of computer");
   const [simulation, setSimulation] = useState<SimulationResponse | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
@@ -104,7 +105,7 @@ export default function Home() {
                   : "bg-slate-800 text-slate-400 hover:bg-slate-700"
               }`}
             >
-              🔍 Query
+              🎬 Query Simulation
             </button>
             <button
               onClick={() => setActiveTab("nodes")}
@@ -114,7 +115,17 @@ export default function Home() {
                   : "bg-slate-800 text-slate-400 hover:bg-slate-700"
               }`}
             >
-              📊 All Nodes
+              📋 All Nodes
+            </button>
+            <button
+              onClick={() => setActiveTab("search")}
+              className={`px-6 py-2 rounded-lg font-medium transition-all ${
+                activeTab === "search"
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+              }`}
+            >
+              🔍 Semantic Search
             </button>
             <button
               onClick={() => setActiveTab("add")}
@@ -124,7 +135,7 @@ export default function Home() {
                   : "bg-slate-800 text-slate-400 hover:bg-slate-700"
               }`}
             >
-              ➕ Add Nodes
+              ➕ Ingest Text
             </button>
           </div>
         </div>
@@ -153,6 +164,9 @@ export default function Home() {
                   {loading ? "Thinking..." : "Query"}
                 </button>
               </div>
+              <p className="text-slate-400 text-sm">
+                Advanced query with step-by-step propagation visualization
+              </p>
             </div>
 
             {/* Simulation Results */}
@@ -265,10 +279,11 @@ export default function Home() {
             {/* Empty State */}
             {!simulation && !loading && (
               <div className="bg-slate-800/50 backdrop-blur rounded-xl p-12 border border-slate-700 text-center">
-                <div className="text-6xl mb-4">🧠</div>
-                <h3 className="text-xl font-semibold mb-2">Ready to Query</h3>
+                <div className="text-6xl mb-4">🎬</div>
+                <h3 className="text-xl font-semibold mb-2">Query Simulation</h3>
                 <p className="text-slate-400">
-                  Enter a query above to see the cognitive graph in action
+                  Enter a query above to see step-by-step activation propagation through the
+                  cognitive graph
                 </p>
               </div>
             )}
@@ -280,6 +295,8 @@ export default function Home() {
             onSelectNode={totalNodes > 0 ? handleSelectNode : undefined}
           />
         )}
+
+        {activeTab === "search" && <SemanticSearchTab />}
 
         {activeTab === "add" && <AddNodesTab onNodesAdded={refreshNodeCount} />}
       </div>

@@ -25,6 +25,7 @@ sys.path.insert(0, PARENT_DIR)
 
 from cog_memory.query_interface import CognitiveMemory
 from cog_memory.node import Role
+from cog_memory.graph import CognitiveGraph
 
 # Global memory instance
 memory = None
@@ -204,6 +205,31 @@ async def query_simulation(request: QueryRequest):
             decay_per_hop=request.decay_per_hop
         )
         return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class IngestRequest(BaseModel):
+    text: str
+
+@app.post("/ingest", response_model=List[NodeResponse])
+async def ingest_text(request: IngestRequest):
+    """Ingest a paragraph and extract commitments using LLM."""
+    if not memory:
+        raise HTTPException(status_code=503, detail="Memory not initialized")
+
+    try:
+        nodes = memory.ingest_paragraph(request.text)
+        return [
+            NodeResponse(
+                id=node.id,
+                text=node.text,
+                role=node.role.value,
+                activation=node.activation,
+                confidence=node.confidence,
+                neighbors=list(node.neighbors.keys())
+            )
+            for node in nodes
+        ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
