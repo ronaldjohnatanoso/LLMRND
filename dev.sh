@@ -68,7 +68,7 @@ if [ ! -d "backend/venv" ]; then
 fi
 
 # Activate venv and install dependencies
-echo -e "${YELLOW}Installing backend dependencies...${NC}"
+echo -e "${YELLOW}Installing/upgrading backend dependencies...${NC}"
 source backend/venv/bin/activate
 pip install -q -r backend/requirements.txt
 
@@ -106,7 +106,7 @@ if [ ! -d "frontend/node_modules" ]; then
 fi
 
 # Start frontend in background
-echo -e "${GREEN}✓ Starting Next.js dev server on http://localhost:3000${NC}"
+echo -e "${GREEN}✓ Starting Next.js dev server on http://localhost:8005${NC}"
 cd frontend
 npm run dev &
 FRONTEND_PID=$!
@@ -134,7 +134,7 @@ echo -e "${GREEN}✓ All services are running!${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "${GREEN}Backend:${NC}  http://localhost:8000"
-echo -e "${GREEN}Frontend:${NC} http://localhost:3000"
+echo -e "${GREEN}Frontend:${NC} http://localhost:8005"
 echo -e "${GREEN}API Docs:${NC} http://localhost:8000/docs"
 echo ""
 echo -e "${YELLOW}Press Ctrl+C to stop all services${NC}"
