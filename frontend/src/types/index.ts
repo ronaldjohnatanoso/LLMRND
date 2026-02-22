@@ -15,6 +15,9 @@ export interface QueryRequest {
   min_similarity_threshold?: number;
   candidate_multiplier?: number;
   decay_per_hop?: number;
+  activation_threshold?: number;
+  propagation_threshold?: number;
+  min_delta?: number;
 }
 
 export interface SimulationStep {
@@ -67,6 +70,9 @@ export interface SimulationResponse {
     min_similarity_threshold: number;
     candidate_multiplier: number;
     decay_per_hop: number;
+    min_delta: number;
+    activation_threshold: number;
+    propagation_threshold: number;
   };
 }
 

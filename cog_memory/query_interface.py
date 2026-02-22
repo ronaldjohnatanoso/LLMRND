@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from cog_memory.cognitive_graph import CognitiveGraph
+from cog_memory.cognitive_graph import CognitiveGraph, ROLE_BOOSTS
 from cog_memory.decay import DecayModule
 from cog_memory.deduplication import DeduplicationEngine
 from cog_memory.embedding_manager import EmbeddingManager
@@ -54,7 +54,10 @@ class CognitiveMemory:
         """
         # Initialize components
         self.store = LanceStore(db_path=db_path)
-        self.graph = CognitiveGraph()
+        self.graph = CognitiveGraph(
+            activation_threshold=0.5,  # Minimum activation for a node to receive signal
+            propagation_threshold=0.6,  # Minimum activation for a node to propagate to neighbors
+        )
         self.extractor = LLMExtractor(
             model=model,
             use_dummy=use_dummy_extractor,
@@ -252,7 +255,7 @@ class CognitiveMemory:
                 continue
 
             current_node = self.graph.get_node(current_id)
-            if not current_node or current_node.activation < self.graph.activation_threshold:
+            if not current_node or current_node.activation < self.graph.propagation_threshold:
                 continue
 
             for neighbor_id, weight in current_node.neighbors.items():
@@ -264,7 +267,9 @@ class CognitiveMemory:
                     continue
 
                 # Calculate role boost
-                role_boost = self.graph.default_boost
+                role_boost = ROLE_BOOSTS.get(
+                    (current_node.role, neighbor.role), self.graph.default_boost
+                )
 
                 # Calculate activation
                 base_similarity = current_node.similarity_to_query if current_node.similarity_to_query > 0 else current_node.activation
@@ -323,6 +328,7 @@ class CognitiveMemory:
             "settings": {
                 "min_delta": self.graph.min_delta,
                 "activation_threshold": self.graph.activation_threshold,
+                "propagation_threshold": self.graph.propagation_threshold,
                 "propagation_depth": propagation_depth,
                 "decay_per_hop": decay_per_hop,
             }
@@ -336,6 +342,9 @@ class CognitiveMemory:
         min_similarity_threshold: float = 0.55,
         candidate_multiplier: int = 2,
         decay_per_hop: float = 0.7,
+        activation_threshold: float | None = None,
+        propagation_threshold: float | None = None,
+        min_delta: float | None = None,
     ) -> dict:
         """Query with step-by-step propagation states for animation.
 
@@ -348,11 +357,27 @@ class CognitiveMemory:
             min_similarity_threshold: Minimum similarity for Layer 1 matches
             candidate_multiplier: Fetch multiplier for vector search
             decay_per_hop: Retention rate per hop
+            activation_threshold: Override minimum activation for a node to receive signal
+            propagation_threshold: Override minimum activation for a node to propagate to neighbors
+            min_delta: Override minimum signal delta to propagate to children
 
         Returns:
             Dictionary with timeline of states for animation
         """
         from collections import deque
+
+        # Store original thresholds for restoration
+        original_activation_threshold = self.graph.activation_threshold
+        original_propagation_threshold = self.graph.propagation_threshold
+        original_min_delta = self.graph.min_delta
+
+        # Apply override thresholds if provided
+        if activation_threshold is not None:
+            self.graph.activation_threshold = activation_threshold
+        if propagation_threshold is not None:
+            self.graph.propagation_threshold = propagation_threshold
+        if min_delta is not None:
+            self.graph.min_delta = min_delta
 
         # Reset activations
         self.graph.reset_all_activations()
@@ -469,7 +494,7 @@ class CognitiveMemory:
                 step_id += 1
 
             node = self.graph.get_node(node_id)
-            if not node or node.activation < self.graph.activation_threshold:
+            if not node or node.activation < self.graph.propagation_threshold:
                 # Track filtered nodes
                 if node:
                     timeline.append({
@@ -496,7 +521,9 @@ class CognitiveMemory:
                     continue
 
                 # Calculate role boost
-                role_boost = self.graph.default_boost
+                role_boost = ROLE_BOOSTS.get(
+                    (node.role, neighbor.role), self.graph.default_boost
+                )
 
                 # Calculate activation with decay
                 base_similarity = node.similarity_to_query if node.similarity_to_query > 0 else node.activation
@@ -550,19 +577,19 @@ class CognitiveMemory:
                 # Gate 2: Check if neighbor can continue propagating
                 can_propagate = (
                     hop + 1 < propagation_depth
-                    and neighbor.activation >= self.graph.activation_threshold
+                    and neighbor.activation >= self.graph.propagation_threshold
                 )
 
                 if can_propagate:
                     queue.append((neighbor_id, hop + 1, node_id))
-                elif neighbor.activation < self.graph.activation_threshold:
+                elif neighbor.activation < self.graph.propagation_threshold:
                     timeline.append({
                         "step": step_id,
                         "type": "gate_2_fail",
-                        "message": f"🚫 Gate 2: '{neighbor.text[:30]}...' too weak to propagate ({neighbor.activation:.3f} < {self.graph.activation_threshold})",
+                        "message": f"🚫 Gate 2: '{neighbor.text[:30]}...' too weak to propagate ({neighbor.activation:.3f} < {self.graph.propagation_threshold})",
                         "node_id": neighbor_id,
                         "activation": neighbor.activation,
-                        "threshold": self.graph.activation_threshold,
+                        "threshold": self.graph.propagation_threshold,
                         "nodes_activated": list(activated_ids),
                     })
                     step_id += 1
@@ -594,7 +621,7 @@ class CognitiveMemory:
             "nodes_activated": list(activated_ids),
         })
 
-        return {
+        result = {
             "query": query_text,
             "timeline": timeline,
             "total_steps": step_id + 1,
@@ -602,11 +629,19 @@ class CognitiveMemory:
             "settings": {
                 "min_delta": self.graph.min_delta,
                 "activation_threshold": self.graph.activation_threshold,
+                "propagation_threshold": self.graph.propagation_threshold,
                 "propagation_depth": propagation_depth,
                 "decay_per_hop": decay_per_hop,
                 "min_similarity": min_similarity_threshold,
             },
         }
+
+        # Restore original thresholds
+        self.graph.activation_threshold = original_activation_threshold
+        self.graph.propagation_threshold = original_propagation_threshold
+        self.graph.min_delta = original_min_delta
+
+        return result
 
     def query(
         self,

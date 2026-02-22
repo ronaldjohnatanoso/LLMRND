@@ -27,6 +27,9 @@ export default function Home() {
   const [minSimilarityThreshold, setMinSimilarityThreshold] = useState(0.55);
   const [candidateMultiplier, setCandidateMultiplier] = useState(2);
   const [decayPerHop, setDecayPerHop] = useState(0.7);
+  const [activationThreshold, setActivationThreshold] = useState(0.5);
+  const [propagationThreshold, setPropagationThreshold] = useState(0.6);
+  const [minDelta, setMinDelta] = useState(0.3);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [isFullscreenGraph, setIsFullscreenGraph] = useState(false);
 
@@ -56,6 +59,9 @@ export default function Home() {
         min_similarity_threshold: minSimilarityThreshold,
         candidate_multiplier: candidateMultiplier,
         decay_per_hop: decayPerHop,
+        activation_threshold: activationThreshold,
+        propagation_threshold: propagationThreshold,
+        min_delta: minDelta,
       });
       setSimulation(result);
       setCurrentStep(0);
@@ -269,11 +275,55 @@ export default function Home() {
                     <span className="text-white font-mono w-14 text-center">{decayPerHop.toFixed(1)}</span>
                   </div>
 
+                  <div className="flex items-center gap-3">
+                    <label className="text-slate-400 text-sm whitespace-nowrap w-48">Activation Threshold:</label>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="0.9"
+                      step="0.1"
+                      value={activationThreshold}
+                      onChange={(e) => setActivationThreshold(parseFloat(e.target.value))}
+                      className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                    />
+                    <span className="text-white font-mono w-14 text-center">{activationThreshold.toFixed(1)}</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <label className="text-slate-400 text-sm whitespace-nowrap w-48">Propagation Threshold:</label>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="0.9"
+                      step="0.1"
+                      value={propagationThreshold}
+                      onChange={(e) => setPropagationThreshold(parseFloat(e.target.value))}
+                      className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                    />
+                    <span className="text-white font-mono w-14 text-center">{propagationThreshold.toFixed(1)}</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <label className="text-slate-400 text-sm whitespace-nowrap w-48">Min Delta:</label>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="0.9"
+                      step="0.1"
+                      value={minDelta}
+                      onChange={(e) => setMinDelta(parseFloat(e.target.value))}
+                      className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                    />
+                    <span className="text-white font-mono w-14 text-center">{minDelta.toFixed(1)}</span>
+                  </div>
+
                   <div className="text-slate-500 text-xs grid grid-cols-2 gap-2">
-                    <div>• <strong>Min Similarity:</strong> Filter out weak matches</div>
-                    <div>• <strong>Candidate Multiplier:</strong> How many extra candidates to consider per hop</div>
-                    <div>• <strong>Decay Per Hop:</strong> How much activation decreases per hop</div>
-                    <div>• <strong>Depth:</strong> How many hops to propagate activation</div>
+                    <div>• <strong>Min Similarity:</strong> Vector search filter for Layer 1 matches</div>
+                    <div>• <strong>Candidate Multiplier:</strong> Extra candidates to consider per hop</div>
+                    <div>• <strong>Decay Per Hop:</strong> Activation decrease per hop</div>
+                    <div>• <strong>Activation Threshold:</strong> Min activation to receive signal</div>
+                    <div>• <strong>Propagation Threshold:</strong> Min activation to propagate to neighbors</div>
+                    <div>• <strong>Min Delta:</strong> Min signal strength to propagate</div>
                   </div>
                 </div>
               )}
@@ -360,6 +410,39 @@ export default function Home() {
                     onChange={(e) => setCurrentStep(parseInt(e.target.value))}
                     className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                   />
+
+                  {/* Simulation Settings Display */}
+                  {simulation.settings && (
+                    <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
+                      <div className="text-xs text-slate-400 mb-2 font-semibold">SIMULATION SETTINGS</div>
+                      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 text-xs">
+                        <div>
+                          <div className="text-slate-500">Depth</div>
+                          <div className="text-white font-mono">{simulation.settings.propagation_depth}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-500">Decay/Hop</div>
+                          <div className="text-white font-mono">{simulation.settings.decay_per_hop?.toFixed(1)}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-500">Min Similarity</div>
+                          <div className="text-white font-mono">{simulation.settings.min_similarity?.toFixed(2)}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-500">Activation Thresh</div>
+                          <div className="text-white font-mono">{simulation.settings.activation_threshold?.toFixed(1)}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-500">Propagation Thresh</div>
+                          <div className="text-white font-mono">{simulation.settings.propagation_threshold?.toFixed(1)}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-500">Min Delta</div>
+                          <div className="text-white font-mono">{simulation.settings.min_delta?.toFixed(1)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Current Step Info */}

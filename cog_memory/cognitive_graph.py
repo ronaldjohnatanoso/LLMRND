@@ -48,6 +48,7 @@ class CognitiveGraph:
         self,
         propagation_depth: int = 2,
         activation_threshold: float = 0.5,
+        propagation_threshold: float = 0.6,
         default_boost: float = 1.0,
         min_delta: float = 0.3,
     ) -> None:
@@ -55,13 +56,15 @@ class CognitiveGraph:
 
         Args:
             propagation_depth: Maximum depth for activation propagation
-            activation_threshold: Minimum activation to continue propagation (default: 0.5)
+            activation_threshold: Minimum activation for a node to receive signal (default: 0.5)
+            propagation_threshold: Minimum activation for a node to propagate to neighbors (default: 0.6)
             default_boost: Default boost multiplier when no role-specific rule exists
             min_delta: Minimum activation delta to propagate to children (default: 0.3)
         """
         self.nodes: dict[str, Node] = {}
         self.propagation_depth = propagation_depth
         self.activation_threshold = activation_threshold
+        self.propagation_threshold = propagation_threshold
         self.default_boost = default_boost
         self.min_delta = min_delta
 
@@ -193,7 +196,7 @@ class CognitiveGraph:
                 # Add to queue if not at max depth AND neighbor will continue propagating
                 if (
                     current_depth + 1 < depth
-                    and neighbor.activation >= self.activation_threshold
+                    and neighbor.activation >= self.propagation_threshold
                 ):
                     queue.append((neighbor_id, current_depth + 1))
 

@@ -85,6 +85,9 @@ class QueryRequest(BaseModel):
     min_similarity_threshold: float = 0.55
     candidate_multiplier: int = 2
     decay_per_hop: float = 0.7
+    activation_threshold: float = 0.5
+    propagation_threshold: float = 0.6
+    min_delta: float = 0.3
 
 class NodeResponse(BaseModel):
     id: str
@@ -203,7 +206,10 @@ async def query_simulation(request: QueryRequest):
             propagation_depth=request.propagation_depth,
             min_similarity_threshold=request.min_similarity_threshold,
             candidate_multiplier=request.candidate_multiplier,
-            decay_per_hop=request.decay_per_hop
+            decay_per_hop=request.decay_per_hop,
+            activation_threshold=request.activation_threshold,
+            propagation_threshold=request.propagation_threshold,
+            min_delta=request.min_delta,
         )
         return result
     except Exception as e:
