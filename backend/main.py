@@ -82,12 +82,10 @@ class QueryRequest(BaseModel):
     query_text: str
     top_k: int = 10
     propagation_depth: int = 3
-    min_similarity_threshold: float = 0.55
-    candidate_multiplier: int = 2
+    activation_threshold: float = 0.55
     decay_per_hop: float = 0.7
-    activation_threshold: float = 0.5
     propagation_threshold: float = 0.6
-    min_delta: float = 0.3
+    max_steps: int = 100
 
 class NodeResponse(BaseModel):
     id: str
@@ -200,20 +198,34 @@ async def query_simulation(request: QueryRequest):
         raise HTTPException(status_code=503, detail="Memory not initialized")
 
     try:
+        print(f"=== QUERY SIMULATION CALLED ===")
+        print(f"query_text: {request.query_text}")
+        print(f"max_steps from request: {request.max_steps}")
+        print(f"top_k: {request.top_k}")
+        print(f"propagation_depth: {request.propagation_depth}")
+
         result = memory.query_simulation(
             query_text=request.query_text,
             top_k=request.top_k,
             propagation_depth=request.propagation_depth,
-            min_similarity_threshold=request.min_similarity_threshold,
-            candidate_multiplier=request.candidate_multiplier,
-            decay_per_hop=request.decay_per_hop,
             activation_threshold=request.activation_threshold,
+            decay_per_hop=request.decay_per_hop,
             propagation_threshold=request.propagation_threshold,
-            min_delta=request.min_delta,
+            max_steps=request.max_steps,
         )
+
+        print(f"=== RESULT ===")
+        print(f"total_steps: {result['total_steps']}")
+        print(f"timeline length: {len(result['timeline'])}")
+        print(f"settings.max_steps: {result['settings']['max_steps']}")
+        print(f"========================")
+
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        print(f"Error in query_simulation: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"{str(e)}\n{traceback.format_exc()}")
 
 class IngestRequest(BaseModel):
     text: str

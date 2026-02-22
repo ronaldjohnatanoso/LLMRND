@@ -50,7 +50,6 @@ class CognitiveGraph:
         activation_threshold: float = 0.5,
         propagation_threshold: float = 0.6,
         default_boost: float = 1.0,
-        min_delta: float = 0.3,
     ) -> None:
         """Initialize the cognitive graph.
 
@@ -59,14 +58,12 @@ class CognitiveGraph:
             activation_threshold: Minimum activation for a node to receive signal (default: 0.5)
             propagation_threshold: Minimum activation for a node to propagate to neighbors (default: 0.6)
             default_boost: Default boost multiplier when no role-specific rule exists
-            min_delta: Minimum activation delta to propagate to children (default: 0.3)
         """
         self.nodes: dict[str, Node] = {}
         self.propagation_depth = propagation_depth
         self.activation_threshold = activation_threshold
         self.propagation_threshold = propagation_threshold
         self.default_boost = default_boost
-        self.min_delta = min_delta
 
     def add_node(self, node: Node) -> None:
         """Add a node to the graph.
@@ -186,10 +183,6 @@ class CognitiveGraph:
                 activation_delta = (
                     base_similarity * weight * role_boost * decay_factor
                 )
-
-                # Only propagate significant signals (above min_delta threshold)
-                if activation_delta < self.min_delta:
-                    continue
 
                 neighbor.update_activation(activation_delta)
 

@@ -159,8 +159,7 @@ class CognitiveMemory:
         query_text: str,
         top_k: int = 10,
         propagation_depth: int = 3,
-        min_similarity_threshold: float = 0.55,
-        candidate_multiplier: int = 2,
+        activation_threshold: float = 0.55,
         decay_per_hop: float = 0.7,
     ) -> dict:
         """Query with detailed debug information for testing.
@@ -169,8 +168,7 @@ class CognitiveMemory:
             query_text: Query text
             top_k: Number of results to return
             propagation_depth: How many hops to propagate (default: 3 for testing)
-            min_similarity_threshold: Minimum similarity for Layer 1 matches
-            candidate_multiplier: Fetch multiplier for vector search (default: 2)
+            activation_threshold: Minimum similarity/activation for Layer 1 matches
             decay_per_hop: Retention rate per hop (default: 0.7 = 70% per hop)
 
         Returns:
@@ -191,7 +189,7 @@ class CognitiveMemory:
         # Query similar nodes
         similar_records = self.store.query_similar(
             embedding=query_embedding,
-            k=top_k * candidate_multiplier,
+            k=top_k,
         )
 
         # Activate Layer 1 (direct matches)
@@ -202,7 +200,7 @@ class CognitiveMemory:
             node_id = record["id"]
             similarity = record.get("similarity", 0.5)
 
-            if similarity < min_similarity_threshold and len(activated_ids) >= top_k:
+            if similarity < activation_threshold and len(activated_ids) >= top_k:
                 continue
 
             node = self.graph.get_node(node_id)
@@ -275,9 +273,6 @@ class CognitiveMemory:
                 base_similarity = current_node.similarity_to_query if current_node.similarity_to_query > 0 else current_node.activation
                 activation_delta = base_similarity * weight * role_boost
 
-                if activation_delta < self.graph.min_delta:
-                    continue
-
                 # Update activation
                 neighbor.update_activation(activation_delta)
                 visited.add(neighbor_id)
@@ -326,7 +321,6 @@ class CognitiveMemory:
             "tree": tree,
             "all_activated": all_activated,
             "settings": {
-                "min_delta": self.graph.min_delta,
                 "activation_threshold": self.graph.activation_threshold,
                 "propagation_threshold": self.graph.propagation_threshold,
                 "propagation_depth": propagation_depth,
@@ -339,12 +333,10 @@ class CognitiveMemory:
         query_text: str,
         top_k: int = 10,
         propagation_depth: int = 3,
-        min_similarity_threshold: float = 0.55,
-        candidate_multiplier: int = 2,
+        activation_threshold: float = 0.55,
         decay_per_hop: float = 0.7,
-        activation_threshold: float | None = None,
         propagation_threshold: float | None = None,
-        min_delta: float | None = None,
+        max_steps: int = 100,
     ) -> dict:
         """Query with step-by-step propagation states for animation.
 
@@ -354,30 +346,22 @@ class CognitiveMemory:
             query_text: Query text
             top_k: Number of results to return
             propagation_depth: How many hops to propagate
-            min_similarity_threshold: Minimum similarity for Layer 1 matches
-            candidate_multiplier: Fetch multiplier for vector search
+            activation_threshold: Minimum similarity/activation for Layer 1 matches
             decay_per_hop: Retention rate per hop
-            activation_threshold: Override minimum activation for a node to receive signal
             propagation_threshold: Override minimum activation for a node to propagate to neighbors
-            min_delta: Override minimum signal delta to propagate to children
-
-        Returns:
-            Dictionary with timeline of states for animation
+            max_steps: Maximum number of steps to generate (hard limit to prevent ballooning)
         """
+        print(f"[query_simulation] Called with max_steps={max_steps}")
         from collections import deque
 
         # Store original thresholds for restoration
         original_activation_threshold = self.graph.activation_threshold
         original_propagation_threshold = self.graph.propagation_threshold
-        original_min_delta = self.graph.min_delta
 
         # Apply override thresholds if provided
-        if activation_threshold is not None:
-            self.graph.activation_threshold = activation_threshold
+        self.graph.activation_threshold = activation_threshold
         if propagation_threshold is not None:
             self.graph.propagation_threshold = propagation_threshold
-        if min_delta is not None:
-            self.graph.min_delta = min_delta
 
         # Reset activations
         self.graph.reset_all_activations()
@@ -402,13 +386,13 @@ class CognitiveMemory:
         # Query similar nodes
         similar_records = self.store.query_similar(
             embedding=query_embedding,
-            k=top_k * candidate_multiplier,
+            k=top_k,
         )
 
         timeline.append({
             "step": step_id,
             "type": "search_results",
-            "message": f"📊 Found {len(similar_records)} candidates, filtering by similarity (≥ {min_similarity_threshold})",
+            "message": f"📊 Found {len(similar_records)} candidates, filtering by similarity (≥ {activation_threshold})",
             "candidates": [
                 {
                     "id": r["id"],
@@ -429,7 +413,7 @@ class CognitiveMemory:
             node_id = record["id"]
             similarity = record.get("similarity", 0.5)
 
-            if similarity < min_similarity_threshold and len(activated_ids) >= top_k:
+            if similarity < activation_threshold and len(activated_ids) >= top_k:
                 continue
 
             node = self.graph.get_node(node_id)
@@ -461,7 +445,7 @@ class CognitiveMemory:
         timeline.append({
             "step": step_id,
             "type": "layer_1",
-            "message": f"✅ Layer 1: Activated {len(activated_ids)} direct matches (similarity ≥ {min_similarity_threshold})",
+            "message": f"✅ Layer 1: Activated {len(activated_ids)} direct matches (similarity ≥ {activation_threshold})",
             "nodes_activated": list(activated_ids),
             "nodes_data": layer_1_nodes,
         })
@@ -475,7 +459,31 @@ class CognitiveMemory:
         processed_in_hop = {0: list(activated_ids)}
 
         current_hop = 0
-        while queue:
+
+        # Track if we've already added the max_steps_reached step (only add it once!)
+        max_steps_added = False
+
+        # Helper to check max_steps before adding a step
+        def can_add_step() -> bool:
+            nonlocal step_id, max_steps_added
+            if step_id >= max_steps:
+                print(f"[can_add_step] BLOCKED: step_id={step_id} >= max_steps={max_steps}")
+                if not max_steps_added:
+                    # Only add the max_steps_reached step ONCE
+                    timeline.append({
+                        "step": step_id,
+                        "type": "max_steps_reached",
+                        "message": f"Max steps reached ({max_steps}). Stopping propagation to prevent ballooning.",
+                        "total_activated": len(activated_ids),
+                        "nodes_activated": list(activated_ids),
+                    })
+                    max_steps_added = True
+                return False
+            print(f"[can_add_step] ALLOWED: step_id={step_id} < max_steps={max_steps}")
+            return True
+
+        max_steps_reached = False
+        while queue and not max_steps_reached:
             node_id, hop, parent_id = queue.popleft()
 
             if hop >= propagation_depth:
@@ -484,6 +492,9 @@ class CognitiveMemory:
             # New hop starting?
             if hop > current_hop:
                 current_hop = hop
+                if not can_add_step():
+                    max_steps_reached = True
+                    break
                 timeline.append({
                     "step": step_id,
                     "type": "hop_start",
@@ -497,6 +508,9 @@ class CognitiveMemory:
             if not node or node.activation < self.graph.propagation_threshold:
                 # Track filtered nodes
                 if node:
+                    if not can_add_step():
+                        max_steps_reached = True
+                        break
                     timeline.append({
                         "step": step_id,
                         "type": "filtered",
@@ -530,21 +544,6 @@ class CognitiveMemory:
                 decay_factor = decay_per_hop ** hop
                 activation_delta = base_similarity * weight * role_boost * decay_factor
 
-                # Gate 1: Min delta check
-                if activation_delta < self.graph.min_delta:
-                    timeline.append({
-                        "step": step_id,
-                        "type": "gate_1_fail",
-                        "message": f"❌ Gate 1: Signal too weak ({activation_delta:.3f} < {self.graph.min_delta})",
-                        "parent_id": node_id,
-                        "child_id": neighbor_id,
-                        "delta": activation_delta,
-                        "threshold": self.graph.min_delta,
-                        "nodes_activated": list(activated_ids),
-                    })
-                    step_id += 1
-                    continue
-
                 # Update activation
                 old_activation = neighbor.activation
                 neighbor.update_activation(activation_delta)
@@ -554,6 +553,9 @@ class CognitiveMemory:
                 if newly_activated:
                     activated_ids.add(neighbor_id)
 
+                if not can_add_step():
+                    max_steps_reached = True
+                    break
                 timeline.append({
                     "step": step_id,
                     "type": "propagation",
@@ -583,6 +585,9 @@ class CognitiveMemory:
                 if can_propagate:
                     queue.append((neighbor_id, hop + 1, node_id))
                 elif neighbor.activation < self.graph.propagation_threshold:
+                    if not can_add_step():
+                        max_steps_reached = True
+                        break
                     timeline.append({
                         "step": step_id,
                         "type": "gate_2_fail",
@@ -612,34 +617,37 @@ class CognitiveMemory:
         # Sort by activation
         final_states.sort(key=lambda x: x["activation"], reverse=True)
 
-        timeline.append({
-            "step": step_id,
-            "type": "complete",
-            "message": f"✨ Propagation complete! {len(activated_ids)} nodes activated",
-            "total_activated": len(activated_ids),
-            "final_states": final_states[:top_k],
-            "nodes_activated": list(activated_ids),
-        })
+        # Check if we hit max_steps before adding complete step
+        hit_max_steps = step_id >= max_steps
+        if not hit_max_steps:
+            timeline.append({
+                "step": step_id,
+                "type": "complete",
+                "message": f"✨ Propagation complete! {len(activated_ids)} nodes activated",
+                "total_activated": len(activated_ids),
+                "final_states": final_states[:top_k],
+                "nodes_activated": list(activated_ids),
+            })
+            step_id += 1
 
         result = {
             "query": query_text,
             "timeline": timeline,
-            "total_steps": step_id + 1,
+            "total_steps": len(timeline),
             "final_states": final_states,
             "settings": {
-                "min_delta": self.graph.min_delta,
                 "activation_threshold": self.graph.activation_threshold,
                 "propagation_threshold": self.graph.propagation_threshold,
                 "propagation_depth": propagation_depth,
                 "decay_per_hop": decay_per_hop,
-                "min_similarity": min_similarity_threshold,
+                "max_steps": max_steps,
             },
         }
+        print(f"[query_simulation] Returning total_steps={result['total_steps']}, timeline_len={len(result['timeline'])}")
 
         # Restore original thresholds
         self.graph.activation_threshold = original_activation_threshold
         self.graph.propagation_threshold = original_propagation_threshold
-        self.graph.min_delta = original_min_delta
 
         return result
 
@@ -649,8 +657,7 @@ class CognitiveMemory:
         top_k: int = 10,
         activate_goals: Sequence[str] | None = None,
         propagation_depth: int = 2,
-        min_similarity_threshold: float = 0.55,
-        candidate_multiplier: int = 2,
+        activation_threshold: float = 0.55,
         decay_per_hop: float = 0.7,
     ) -> list[Node]:
         """Query the cognitive memory system.
@@ -660,8 +667,7 @@ class CognitiveMemory:
             top_k: Number of results to return
             activate_goals: Optional list of goal IDs to activate
             propagation_depth: How many hops to propagate activation (default: 2)
-            min_similarity_threshold: Minimum similarity for Layer 1 direct matches (default: 0.55)
-            candidate_multiplier: Fetch multiplier for vector search (default: 2)
+            activation_threshold: Minimum similarity/activation for Layer 1 direct matches (default: 0.55)
             decay_per_hop: Retention rate per hop (default: 0.7 = 70% per hop)
 
         Returns:
@@ -676,7 +682,7 @@ class CognitiveMemory:
         # Query similar nodes
         similar_records = self.store.query_similar(
             embedding=query_embedding,
-            k=top_k * candidate_multiplier,
+            k=top_k,
         )
 
         # Activate similar nodes (Layer 1: direct matches)
@@ -687,7 +693,7 @@ class CognitiveMemory:
             similarity = record.get("similarity", 0.5)
 
             # STRICT: Only activate if above threshold
-            if similarity < min_similarity_threshold:
+            if similarity < activation_threshold:
                 continue
 
             node = self.graph.get_node(node_id)

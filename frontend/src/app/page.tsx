@@ -24,12 +24,10 @@ export default function Home() {
   // Query parameters
   const [topK, setTopK] = useState(5);
   const [propagationDepth, setPropagationDepth] = useState(2);
-  const [minSimilarityThreshold, setMinSimilarityThreshold] = useState(0.55);
-  const [candidateMultiplier, setCandidateMultiplier] = useState(2);
+  const [activationThreshold, setActivationThreshold] = useState(0.55);
   const [decayPerHop, setDecayPerHop] = useState(0.7);
-  const [activationThreshold, setActivationThreshold] = useState(0.5);
   const [propagationThreshold, setPropagationThreshold] = useState(0.6);
-  const [minDelta, setMinDelta] = useState(0.3);
+  const [maxSteps, setMaxSteps] = useState(100);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [isFullscreenGraph, setIsFullscreenGraph] = useState(false);
 
@@ -56,12 +54,10 @@ export default function Home() {
         query_text: query,
         top_k: topK,
         propagation_depth: propagationDepth,
-        min_similarity_threshold: minSimilarityThreshold,
-        candidate_multiplier: candidateMultiplier,
-        decay_per_hop: decayPerHop,
         activation_threshold: activationThreshold,
+        decay_per_hop: decayPerHop,
         propagation_threshold: propagationThreshold,
-        min_delta: minDelta,
+        max_steps: maxSteps,
       });
       setSimulation(result);
       setCurrentStep(0);
@@ -234,31 +230,31 @@ export default function Home() {
               {showAdvancedSettings && (
                 <div className="bg-slate-900/50 rounded-lg p-4 space-y-4 border border-slate-700">
                   <div className="flex items-center gap-3">
-                    <label className="text-slate-400 text-sm whitespace-nowrap w-48">Min Similarity:</label>
+                    <label className="text-slate-400 text-sm whitespace-nowrap w-48">Activation Threshold:</label>
                     <input
                       type="range"
-                      min="0.30"
-                      max="0.75"
+                      min="0.3"
+                      max="0.8"
                       step="0.05"
-                      value={minSimilarityThreshold}
-                      onChange={(e) => setMinSimilarityThreshold(parseFloat(e.target.value))}
+                      value={activationThreshold}
+                      onChange={(e) => setActivationThreshold(parseFloat(e.target.value))}
                       className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
                     />
-                    <span className="text-white font-mono w-14 text-center">{minSimilarityThreshold.toFixed(2)}</span>
+                    <span className="text-white font-mono w-14 text-center">{activationThreshold.toFixed(2)}</span>
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <label className="text-slate-400 text-sm whitespace-nowrap w-48">Candidate Multiplier:</label>
+                    <label className="text-slate-400 text-sm whitespace-nowrap w-48">Max Steps:</label>
                     <input
                       type="range"
-                      min="1"
-                      max="5"
-                      step="1"
-                      value={candidateMultiplier}
-                      onChange={(e) => setCandidateMultiplier(parseInt(e.target.value))}
+                      min="50"
+                      max="500"
+                      step="50"
+                      value={maxSteps}
+                      onChange={(e) => setMaxSteps(parseInt(e.target.value))}
                       className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
                     />
-                    <span className="text-white font-mono w-14 text-center">{candidateMultiplier}x</span>
+                    <span className="text-white font-mono w-14 text-center">{maxSteps}</span>
                   </div>
 
                   <div className="flex items-center gap-3">
@@ -276,20 +272,6 @@ export default function Home() {
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <label className="text-slate-400 text-sm whitespace-nowrap w-48">Activation Threshold:</label>
-                    <input
-                      type="range"
-                      min="0.1"
-                      max="0.9"
-                      step="0.1"
-                      value={activationThreshold}
-                      onChange={(e) => setActivationThreshold(parseFloat(e.target.value))}
-                      className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                    />
-                    <span className="text-white font-mono w-14 text-center">{activationThreshold.toFixed(1)}</span>
-                  </div>
-
-                  <div className="flex items-center gap-3">
                     <label className="text-slate-400 text-sm whitespace-nowrap w-48">Propagation Threshold:</label>
                     <input
                       type="range"
@@ -303,27 +285,11 @@ export default function Home() {
                     <span className="text-white font-mono w-14 text-center">{propagationThreshold.toFixed(1)}</span>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <label className="text-slate-400 text-sm whitespace-nowrap w-48">Min Delta:</label>
-                    <input
-                      type="range"
-                      min="0.1"
-                      max="0.9"
-                      step="0.1"
-                      value={minDelta}
-                      onChange={(e) => setMinDelta(parseFloat(e.target.value))}
-                      className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                    />
-                    <span className="text-white font-mono w-14 text-center">{minDelta.toFixed(1)}</span>
-                  </div>
-
                   <div className="text-slate-500 text-xs grid grid-cols-2 gap-2">
-                    <div>• <strong>Min Similarity:</strong> Vector search filter for Layer 1 matches</div>
-                    <div>• <strong>Candidate Multiplier:</strong> Extra candidates to consider per hop</div>
+                    <div>• <strong>Activation Threshold:</strong> Min similarity/activation to activate nodes</div>
+                    <div>• <strong>Max Steps:</strong> Hard limit to prevent cognitive ballooning</div>
                     <div>• <strong>Decay Per Hop:</strong> Activation decrease per hop</div>
-                    <div>• <strong>Activation Threshold:</strong> Min activation to receive signal</div>
                     <div>• <strong>Propagation Threshold:</strong> Min activation to propagate to neighbors</div>
-                    <div>• <strong>Min Delta:</strong> Min signal strength to propagate</div>
                   </div>
                 </div>
               )}
@@ -415,7 +381,7 @@ export default function Home() {
                   {simulation.settings && (
                     <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
                       <div className="text-xs text-slate-400 mb-2 font-semibold">SIMULATION SETTINGS</div>
-                      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 text-xs">
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
                         <div>
                           <div className="text-slate-500">Depth</div>
                           <div className="text-white font-mono">{simulation.settings.propagation_depth}</div>
@@ -425,20 +391,16 @@ export default function Home() {
                           <div className="text-white font-mono">{simulation.settings.decay_per_hop?.toFixed(1)}</div>
                         </div>
                         <div>
-                          <div className="text-slate-500">Min Similarity</div>
-                          <div className="text-white font-mono">{simulation.settings.min_similarity?.toFixed(2)}</div>
-                        </div>
-                        <div>
                           <div className="text-slate-500">Activation Thresh</div>
-                          <div className="text-white font-mono">{simulation.settings.activation_threshold?.toFixed(1)}</div>
+                          <div className="text-white font-mono">{simulation.settings.activation_threshold?.toFixed(2)}</div>
                         </div>
                         <div>
                           <div className="text-slate-500">Propagation Thresh</div>
                           <div className="text-white font-mono">{simulation.settings.propagation_threshold?.toFixed(1)}</div>
                         </div>
                         <div>
-                          <div className="text-slate-500">Min Delta</div>
-                          <div className="text-white font-mono">{simulation.settings.min_delta?.toFixed(1)}</div>
+                          <div className="text-slate-500">Max Steps</div>
+                          <div className="text-white font-mono">{simulation.settings.max_steps}</div>
                         </div>
                       </div>
                     </div>
@@ -488,6 +450,75 @@ export default function Home() {
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Graph Visualization</h3>
                   <GraphVisualization simulation={simulation} currentStep={currentStep} />
+                </div>
+
+                {/* Step Statistics Ledger */}
+                <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-slate-700">
+                  <h3 className="text-lg font-semibold mb-4">📊 Step Statistics</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    {(() => {
+                      const stats = simulation.timeline.slice(0, currentStep + 1).reduce((acc: any, step: any) => {
+                        acc[step.type] = (acc[step.type] || 0) + 1;
+                        return acc;
+                      }, {});
+                      return (
+                        <>
+                          <div className="bg-slate-900/50 rounded-lg p-3">
+                            <div className="text-slate-400 text-xs">Total Steps</div>
+                            <div className="text-2xl font-bold text-white">{currentStep + 1}</div>
+                            <div className="text-slate-500 text-xs">of {simulation.total_steps}</div>
+                          </div>
+                          <div className="bg-slate-900/50 rounded-lg p-3">
+                            <div className="text-slate-400 text-xs">Propagations</div>
+                            <div className="text-2xl font-bold text-green-400">{stats.propagation || 0}</div>
+                            <div className="text-slate-500 text-xs">✅ Successful</div>
+                          </div>
+                          <div className="bg-slate-900/50 rounded-lg p-3">
+                            <div className="text-slate-400 text-xs">Filtered</div>
+                            <div className="text-2xl font-bold text-red-400">{stats.filtered || 0}</div>
+                            <div className="text-slate-500 text-xs">🚫 Below threshold</div>
+                          </div>
+                          <div className="bg-slate-900/50 rounded-lg p-3">
+                            <div className="text-slate-400 text-xs">Gate 2 Failed</div>
+                            <div className="text-2xl font-bold text-orange-400">{stats.gate_2_fail || 0}</div>
+                            <div className="text-slate-500 text-xs">⛔ Can't propagate</div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    {(() => {
+                      const stats = simulation.timeline.slice(0, currentStep + 1).reduce((acc: any, step: any) => {
+                        acc[step.type] = (acc[step.type] || 0) + 1;
+                        return acc;
+                      }, {});
+                      return (
+                        <>
+                          <div className="bg-slate-900/50 rounded-lg p-3">
+                            <div className="text-slate-400 text-xs">Hop Starts</div>
+                            <div className="text-xl font-bold text-blue-400">{stats.hop_start || 0}</div>
+                            <div className="text-slate-500 text-xs">🌊 New layers</div>
+                          </div>
+                          <div className="bg-slate-900/50 rounded-lg p-3">
+                            <div className="text-slate-400 text-xs">Layer 1</div>
+                            <div className="text-xl font-bold text-purple-400">{stats.layer_1 || 0}</div>
+                            <div className="text-slate-500 text-xs">✅ Direct matches</div>
+                          </div>
+                          <div className="bg-slate-900/50 rounded-lg p-3">
+                            <div className="text-slate-400 text-xs">Search Steps</div>
+                            <div className="text-xl font-bold text-cyan-400">{(stats.search || 0) + (stats.search_results || 0)}</div>
+                            <div className="text-slate-500 text-xs">🔍 Vector search</div>
+                          </div>
+                          <div className="bg-slate-900/50 rounded-lg p-3">
+                            <div className="text-slate-400 text-xs">Complete</div>
+                            <div className="text-xl font-bold text-yellow-400">{stats.complete || 0}</div>
+                            <div className="text-slate-500 text-xs">✨ Finished</div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               </div>
             )}
@@ -643,8 +674,56 @@ export default function Home() {
           </div>
 
           {/* Graph Container */}
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden relative">
             <GraphVisualization simulation={simulation} currentStep={currentStep} />
+          </div>
+
+          {/* Step Statistics Ledger - Fixed at bottom */}
+          <div className="flex-shrink-0 bg-slate-900 border-t border-slate-700 p-4">
+            <div className="grid grid-cols-4 md:grid-cols-8 gap-3 text-xs">
+              {(() => {
+                const stats = simulation.timeline.slice(0, currentStep + 1).reduce((acc: any, step: any) => {
+                  acc[step.type] = (acc[step.type] || 0) + 1;
+                  return acc;
+                }, {});
+                return (
+                  <>
+                    <div className="bg-slate-800 rounded p-2">
+                      <div className="text-slate-500">Total</div>
+                      <div className="text-lg font-bold text-white">{currentStep + 1}</div>
+                    </div>
+                    <div className="bg-slate-800 rounded p-2">
+                      <div className="text-slate-500">✅ Prop</div>
+                      <div className="text-lg font-bold text-green-400">{stats.propagation || 0}</div>
+                    </div>
+                    <div className="bg-slate-800 rounded p-2">
+                      <div className="text-slate-500">🚫 Filt</div>
+                      <div className="text-lg font-bold text-red-400">{stats.filtered || 0}</div>
+                    </div>
+                    <div className="bg-slate-800 rounded p-2">
+                      <div className="text-slate-500">⛔ Gate</div>
+                      <div className="text-lg font-bold text-orange-400">{stats.gate_2_fail || 0}</div>
+                    </div>
+                    <div className="bg-slate-800 rounded p-2">
+                      <div className="text-slate-500">🌊 Hops</div>
+                      <div className="text-lg font-bold text-blue-400">{stats.hop_start || 0}</div>
+                    </div>
+                    <div className="bg-slate-800 rounded p-2">
+                      <div className="text-slate-500">✅ L1</div>
+                      <div className="text-lg font-bold text-purple-400">{stats.layer_1 || 0}</div>
+                    </div>
+                    <div className="bg-slate-800 rounded p-2">
+                      <div className="text-slate-500">🔍 Src</div>
+                      <div className="text-lg font-bold text-cyan-400">{(stats.search || 0) + (stats.search_results || 0)}</div>
+                    </div>
+                    <div className="bg-slate-800 rounded p-2">
+                      <div className="text-slate-500">✨ Done</div>
+                      <div className="text-lg font-bold text-yellow-400">{stats.complete || 0}</div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
           </div>
         </div>
       )}

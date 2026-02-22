@@ -12,12 +12,10 @@ export interface QueryRequest {
   query_text: string;
   top_k?: number;
   propagation_depth?: number;
-  min_similarity_threshold?: number;
-  candidate_multiplier?: number;
-  decay_per_hop?: number;
   activation_threshold?: number;
+  decay_per_hop?: number;
   propagation_threshold?: number;
-  min_delta?: number;
+  max_steps?: number;
 }
 
 export interface SimulationStep {
@@ -67,12 +65,10 @@ export interface SimulationResponse {
   settings: {
     top_k: number;
     propagation_depth: number;
-    min_similarity_threshold: number;
-    candidate_multiplier: number;
-    decay_per_hop: number;
-    min_delta: number;
     activation_threshold: number;
+    decay_per_hop: number;
     propagation_threshold: number;
+    max_steps: number;
   };
 }
 
