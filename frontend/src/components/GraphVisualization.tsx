@@ -554,10 +554,19 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
           cyRef.current = null;
         }
       };
-    } else {
-      // Update existing graph smoothly using batch
-      cy.startBatch();
+    }
+  }, [elements, baseNodeSize, baseFontSize, edgeOpacity, simulation, currentStep, hoveredNode]);
 
+  // Separate effect for updating existing graph - only runs after initialization
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || elements.nodes.length === 0) return;
+
+    // Disable ALL animations during update
+    cy.style().selector('*').style({ 'transition-duration': 0 });
+    cy.startBatch();
+
+    try {
       // Get current elements in the graph
       const currentNodes = new Set(cy.nodes().map(n => n.id()));
       const currentEdges = new Set(cy.edges().map(e => e.id()));
@@ -572,11 +581,12 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
             classes: node.classes,
           } as any);
         } else {
-          // Update existing node
+          // Update existing node - preserve position
           const cyNode = cy.getElementById(node.data.id);
           if (cyNode) {
             cyNode.data(node.data);
             cyNode.classes(node.classes || "");
+            // Don't touch position!
           }
         }
       });
@@ -610,10 +620,11 @@ export default function GraphVisualization({ simulation, currentStep }: GraphVis
           cy.remove(edge);
         }
       });
-
+    } finally {
       cy.endBatch();
+      cy.style().selector('*').style({ 'transition-duration': 200 });
     }
-  }, [elements, baseNodeSize, baseFontSize, edgeOpacity, simulation, currentStep, hoveredNode]);
+  }, [elements]);
 
   return (
     <div className="relative w-full h-[600px] bg-slate-900 rounded-lg overflow-hidden border border-slate-700">
