@@ -2,20 +2,37 @@
 
 import { useState, useEffect } from "react";
 import GraphVisualization from "@/components/GraphVisualization";
+import AllNodesTab from "@/components/AllNodesTab";
+import AddNodesTab from "@/components/AddNodesTab";
+import NodeDetailsPanel from "@/components/NodeDetailsPanel";
 import { querySimulation, getNodes } from "@/lib/api";
-import { SimulationResponse } from "@/types";
+import { SimulationResponse, Node as NodeType } from "@/types";
+
+type TabType = "query" | "nodes" | "add";
 
 export default function Home() {
+  const [activeTab, setActiveTab] = useState<TabType>("query");
   const [query, setQuery] = useState("father of computer");
   const [simulation, setSimulation] = useState<SimulationResponse | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [totalNodes, setTotalNodes] = useState(0);
+  const [selectedNode, setSelectedNode] = useState<NodeType | null>(null);
+  const [selectedNodeNeighbors, setSelectedNodeNeighbors] = useState<NodeType[]>([]);
 
   // Load total nodes on mount
   useEffect(() => {
-    getNodes().then((nodes) => setTotalNodes(nodes.length)).catch(console.error);
+    refreshNodeCount();
   }, []);
+
+  const refreshNodeCount = async () => {
+    try {
+      const nodes = await getNodes();
+      setTotalNodes(nodes.length);
+    } catch (error) {
+      console.error("Error loading nodes:", error);
+    }
+  };
 
   const handleRunQuery = async () => {
     if (!query.trim()) return;
@@ -40,152 +57,244 @@ export default function Home() {
     }
   };
 
+  const handleSelectNode = async (node: NodeType) => {
+    setSelectedNode(node);
+    // Load neighbors
+    try {
+      const allNodes = await getNodes();
+      const neighborMap = new Map(allNodes.map((n) => [n.id, n]));
+      const neighbors = node.neighbors
+        .map((id) => neighborMap.get(id))
+        .filter((n): n is NodeType => n !== undefined);
+      setSelectedNodeNeighbors(neighbors);
+    } catch (error) {
+      console.error("Error loading neighbors:", error);
+      setSelectedNodeNeighbors([]);
+    }
+  };
+
   const currentStepData = simulation?.timeline[currentStep];
   const progress = simulation ? ((currentStep + 1) / simulation.total_steps) * 100 : 0;
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="text-center space-y-4">
-          <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-            CogMemory
-          </h1>
-          <p className="text-slate-400 text-lg">Cognitive Graph Memory for LLMs</p>
-          <p className="text-sm text-slate-500">{totalNodes} nodes in memory</p>
-        </div>
+    <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
+      {/* Header */}
+      <div className="border-b border-slate-800 bg-slate-900/50 backdrop-blur">
+        <div className="max-w-7xl mx-auto px-8 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+                CogMemory
+              </h1>
+              <p className="text-slate-400">Cognitive Graph Memory for LLMs</p>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-blue-400">{totalNodes}</div>
+              <div className="text-sm text-slate-500">nodes in memory</div>
+            </div>
+          </div>
 
-        {/* Query Input */}
-        <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-slate-700 space-y-4">
-          <div className="flex gap-4">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleRunQuery()}
-              placeholder="Enter your query..."
-              className="flex-1 px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-slate-500"
-            />
+          {/* Tabs */}
+          <div className="flex gap-2 mt-6">
             <button
-              onClick={handleRunQuery}
-              disabled={loading}
-              className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              onClick={() => setActiveTab("query")}
+              className={`px-6 py-2 rounded-lg font-medium transition-all ${
+                activeTab === "query"
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+              }`}
             >
-              {loading ? "Thinking..." : "Query"}
+              🔍 Query
+            </button>
+            <button
+              onClick={() => setActiveTab("nodes")}
+              className={`px-6 py-2 rounded-lg font-medium transition-all ${
+                activeTab === "nodes"
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+              }`}
+            >
+              📊 All Nodes
+            </button>
+            <button
+              onClick={() => setActiveTab("add")}
+              className={`px-6 py-2 rounded-lg font-medium transition-all ${
+                activeTab === "add"
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+              }`}
+            >
+              ➕ Add Nodes
             </button>
           </div>
         </div>
+      </div>
 
-        {/* Simulation Results */}
-        {simulation && (
-          <div className="space-y-6">
-            {/* Step Navigation */}
+      {/* Content */}
+      <div className="max-w-7xl mx-auto px-8 py-8">
+        {activeTab === "query" && (
+          <div className="space-y-8">
+            {/* Query Input */}
             <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-slate-700 space-y-4">
-              <div className="flex items-center justify-between">
-                <button
-                  onClick={() => setCurrentStep(0)}
-                  disabled={currentStep === 0}
-                  className="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  ⏮️ First
-                </button>
-                <button
-                  onClick={() => setCurrentStep((s) => Math.max(0, s - 1))}
-                  disabled={currentStep === 0}
-                  className="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  ◀️ Prev
-                </button>
-                <div className="text-center">
-                  <div className="text-2xl font-bold">{currentStep + 1} / {simulation.total_steps}</div>
-                  <div className="text-sm text-slate-400">Step</div>
-                </div>
-                <button
-                  onClick={() => setCurrentStep((s) => Math.min(simulation.total_steps - 1, s + 1))}
-                  disabled={currentStep === simulation.total_steps - 1}
-                  className="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  Next ▶️
-                </button>
-                <button
-                  onClick={() => setCurrentStep(simulation.total_steps - 1)}
-                  disabled={currentStep === simulation.total_steps - 1}
-                  className="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  Last ⏭️
-                </button>
-              </div>
-
-              {/* Progress Bar */}
-              <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
-                  style={{ width: `${progress}%` }}
+              <div className="flex gap-4">
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleRunQuery()}
+                  placeholder="Enter your query..."
+                  className="flex-1 px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-slate-500"
                 />
+                <button
+                  onClick={handleRunQuery}
+                  disabled={loading}
+                  className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  {loading ? "Thinking..." : "Query"}
+                </button>
               </div>
-
-              {/* Step Slider */}
-              <input
-                type="range"
-                min="0"
-                max={simulation.total_steps - 1}
-                value={currentStep}
-                onChange={(e) => setCurrentStep(parseInt(e.target.value))}
-                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-              />
             </div>
 
-            {/* Current Step Info */}
-            {currentStepData && (
-              <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-slate-700">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="text-2xl">
-                    {currentStepData.type === "search" && "🔍"}
-                    {currentStepData.type === "search_results" && "📊"}
-                    {currentStepData.type === "layer_1" && "✅"}
-                    {currentStepData.type === "hop_start" && "🌊"}
-                    {currentStepData.type === "propagation" && "➡️"}
-                    {currentStepData.type === "gate_1_fail" && "🚫"}
-                    {currentStepData.type === "gate_2_fail" && "🚫"}
-                    {currentStepData.type === "complete" && "✨"}
-                  </span>
-                  <h3 className="text-xl font-semibold">{currentStepData.message}</h3>
-                </div>
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div className="bg-slate-900/50 rounded-lg p-3">
-                    <div className="text-slate-400">Step Type</div>
-                    <div className="font-mono text-blue-400">{currentStepData.type}</div>
+            {/* Simulation Results */}
+            {simulation && (
+              <div className="space-y-6">
+                {/* Step Navigation */}
+                <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-slate-700 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => setCurrentStep(0)}
+                      disabled={currentStep === 0}
+                      className="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      ⏮️ First
+                    </button>
+                    <button
+                      onClick={() => setCurrentStep((s) => Math.max(0, s - 1))}
+                      disabled={currentStep === 0}
+                      className="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      ◀️ Prev
+                    </button>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold">
+                        {currentStep + 1} / {simulation.total_steps}
+                      </div>
+                      <div className="text-sm text-slate-400">Step</div>
+                    </div>
+                    <button
+                      onClick={() =>
+                        setCurrentStep((s) => Math.min(simulation.total_steps - 1, s + 1))
+                      }
+                      disabled={currentStep === simulation.total_steps - 1}
+                      className="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      Next ▶️
+                    </button>
+                    <button
+                      onClick={() => setCurrentStep(simulation.total_steps - 1)}
+                      disabled={currentStep === simulation.total_steps - 1}
+                      className="px-4 py-2 bg-slate-700 rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      Last ⏭️
+                    </button>
                   </div>
-                  {currentStepData.hop !== undefined && (
-                    <div className="bg-slate-900/50 rounded-lg p-3">
-                      <div className="text-slate-400">Hop</div>
-                      <div className="font-mono text-purple-400">{currentStepData.hop}</div>
-                    </div>
-                  )}
-                  {currentStepData.delta !== undefined && (
-                    <div className="bg-slate-900/50 rounded-lg p-3">
-                      <div className="text-slate-400">Signal</div>
-                      <div className="font-mono text-green-400">Δ{currentStepData.delta.toFixed(4)}</div>
-                    </div>
-                  )}
+
+                  {/* Progress Bar */}
+                  <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+
+                  {/* Step Slider */}
+                  <input
+                    type="range"
+                    min="0"
+                    max={simulation.total_steps - 1}
+                    value={currentStep}
+                    onChange={(e) => setCurrentStep(parseInt(e.target.value))}
+                    className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
                 </div>
+
+                {/* Current Step Info */}
+                {currentStepData && (
+                  <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-slate-700">
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-2xl">
+                        {currentStepData.type === "search" && "🔍"}
+                        {currentStepData.type === "search_results" && "📊"}
+                        {currentStepData.type === "layer_1" && "✅"}
+                        {currentStepData.type === "hop_start" && "🌊"}
+                        {currentStepData.type === "propagation" && "➡️"}
+                        {currentStepData.type === "gate_1_fail" && "🚫"}
+                        {currentStepData.type === "gate_2_fail" && "🚫"}
+                        {currentStepData.type === "complete" && "✨"}
+                      </span>
+                      <h3 className="text-xl font-semibold">{currentStepData.message}</h3>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div className="bg-slate-900/50 rounded-lg p-3">
+                        <div className="text-slate-400">Step Type</div>
+                        <div className="font-mono text-blue-400">{currentStepData.type}</div>
+                      </div>
+                      {currentStepData.hop !== undefined && (
+                        <div className="bg-slate-900/50 rounded-lg p-3">
+                          <div className="text-slate-400">Hop</div>
+                          <div className="font-mono text-purple-400">{currentStepData.hop}</div>
+                        </div>
+                      )}
+                      {currentStepData.delta !== undefined && (
+                        <div className="bg-slate-900/50 rounded-lg p-3">
+                          <div className="text-slate-400">Signal</div>
+                          <div className="font-mono text-green-400">
+                            Δ{currentStepData.delta.toFixed(4)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Graph Visualization */}
+                <GraphVisualization simulation={simulation} currentStep={currentStep} />
               </div>
             )}
 
-            {/* Graph Visualization */}
-            <GraphVisualization simulation={simulation} currentStep={currentStep} />
+            {/* Empty State */}
+            {!simulation && !loading && (
+              <div className="bg-slate-800/50 backdrop-blur rounded-xl p-12 border border-slate-700 text-center">
+                <div className="text-6xl mb-4">🧠</div>
+                <h3 className="text-xl font-semibold mb-2">Ready to Query</h3>
+                <p className="text-slate-400">
+                  Enter a query above to see the cognitive graph in action
+                </p>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Empty State */}
-        {!simulation && !loading && (
-          <div className="bg-slate-800/50 backdrop-blur rounded-xl p-12 border border-slate-700 text-center">
-            <div className="text-6xl mb-4">🧠</div>
-            <h3 className="text-xl font-semibold mb-2">Ready to Query</h3>
-            <p className="text-slate-400">Enter a query above to see the cognitive graph in action</p>
-          </div>
+        {activeTab === "nodes" && (
+          <AllNodesTab
+            onSelectNode={totalNodes > 0 ? handleSelectNode : undefined}
+          />
         )}
+
+        {activeTab === "add" && <AddNodesTab onNodesAdded={refreshNodeCount} />}
       </div>
+
+      {/* Node Details Panel */}
+      {selectedNode && (
+        <NodeDetailsPanel
+          node={selectedNode}
+          neighbors={selectedNodeNeighbors}
+          onClose={() => {
+            setSelectedNode(null);
+            setSelectedNodeNeighbors([]);
+          }}
+        />
+      )}
     </main>
   );
 }
