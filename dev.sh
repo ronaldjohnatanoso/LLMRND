@@ -72,10 +72,10 @@ echo -e "${YELLOW}Installing/upgrading backend dependencies...${NC}"
 source backend/venv/bin/activate
 pip install -q -r backend/requirements.txt
 
-# Start backend in background
+# Start backend in background with auto-reload
 echo -e "${GREEN}✓ Starting FastAPI server on http://localhost:8000${NC}"
 cd backend
-python main.py &
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload &
 BACKEND_PID=$!
 cd ..
 
