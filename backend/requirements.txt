@@ -8,6 +8,7 @@ lancedb==0.14.0
 numpy==1.26.4
 requests==2.31.0
 openai>=1.0.0  # For llm_extractor
+pandas>=2.0.0  # Required by LanceDB
 
 # Optional: For local embeddings (uncomment if USE_LOCAL_EMBEDDINGS=true)
 # sentence-transformers==3.0.1
