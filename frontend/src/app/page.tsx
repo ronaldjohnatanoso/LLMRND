@@ -8,6 +8,7 @@ import SemanticSearchTab from "@/components/SemanticSearchTab";
 import NodeDetailsPanel from "@/components/NodeDetailsPanel";
 import { querySimulation, getNodes } from "@/lib/api";
 import { SimulationResponse, Node as NodeType } from "@/types";
+import { saveWeights, loadWeights, getWeightsStats } from "@/lib/api";
 
 type TabType = "query" | "nodes" | "search" | "add";
 
@@ -31,9 +32,16 @@ export default function Home() {
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [isFullscreenGraph, setIsFullscreenGraph] = useState(false);
 
+  // Neuroplasticity settings
+  const [enablePlasticity, setEnablePlasticity] = useState(true);
+  const [learningRate, setLearningRate] = useState(0.02);
+  const [consolidationEnabled, setConsolidationEnabled] = useState(true);
+  const [weightsStats, setWeightsStats] = useState<{ query_count: number; total_edges: number } | null>(null);
+
   // Load total nodes on mount
   useEffect(() => {
     refreshNodeCount();
+    getWeightsStats().then(setWeightsStats).catch(() => {});
   }, []);
 
   const refreshNodeCount = async () => {
@@ -58,9 +66,23 @@ export default function Home() {
         decay_per_hop: decayPerHop,
         propagation_threshold: propagationThreshold,
         max_steps: maxSteps,
+        enable_plasticity: enablePlasticity,
+        plasticity_config: {
+          learning_rate: learningRate,
+          consolidation_enabled: consolidationEnabled,
+        },
       });
       setSimulation(result);
       setCurrentStep(0);
+
+      // Refresh weights stats after query
+      if (enablePlasticity) {
+        try {
+          setWeightsStats(await getWeightsStats());
+        } catch (e) {
+          console.warn("Failed to fetch weights stats:", e);
+        }
+      }
     } catch (error) {
       console.error("Query error:", error);
       alert("Failed to run query. Check if backend is running on http://localhost:8000");
@@ -116,6 +138,11 @@ export default function Home() {
             <div className="text-right">
               <div className="text-2xl font-bold text-blue-400">{totalNodes}</div>
               <div className="text-sm text-slate-500">nodes in memory</div>
+              {weightsStats && (
+                <div className="text-xs text-slate-500 mt-1">
+                  🧠 {weightsStats.query_count} queries processed | {weightsStats.total_edges} connections
+                </div>
+              )}
             </div>
           </div>
 
@@ -291,6 +318,79 @@ export default function Home() {
                     <div>• <strong>Decay Per Hop:</strong> Activation decrease per hop</div>
                     <div>• <strong>Propagation Threshold:</strong> Min activation to propagate to neighbors</div>
                   </div>
+
+                  {/* Neuroplasticity Settings */}
+                  <div className="border-t border-slate-700 pt-4 mt-4">
+                    <div className="text-xs text-slate-400 mb-3 font-semibold">🧠 NEUROPLASTICITY (Learning)</div>
+
+                    <div className="flex items-center gap-3 mb-3">
+                      <input
+                        type="checkbox"
+                        id="enablePlasticity"
+                        checked={enablePlasticity}
+                        onChange={(e) => setEnablePlasticity(e.target.checked)}
+                        className="w-4 h-4 accent-blue-500"
+                      />
+                      <label htmlFor="enablePlasticity" className="text-slate-300 text-sm">
+                        Enable Hebbian Learning (connections strengthen with use)
+                      </label>
+                    </div>
+
+                    {enablePlasticity && (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <label className="text-slate-400 text-sm whitespace-nowrap w-48">Learning Rate:</label>
+                          <input
+                            type="range"
+                            min="0.001"
+                            max="0.1"
+                            step="0.001"
+                            value={learningRate}
+                            onChange={(e) => setLearningRate(parseFloat(e.target.value))}
+                            className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-green-500"
+                          />
+                          <span className="text-white font-mono w-14 text-center">{learningRate.toFixed(3)}</span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            id="consolidationEnabled"
+                            checked={consolidationEnabled}
+                            onChange={(e) => setConsolidationEnabled(e.target.checked)}
+                            className="w-4 h-4 accent-blue-500"
+                          />
+                          <label htmlFor="consolidationEnabled" className="text-slate-300 text-sm">
+                            Enable Memory Consolidation (every 100 queries)
+                          </label>
+                        </div>
+
+                        {/* Weights Management */}
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={async () => {
+                              const result = await saveWeights();
+                              alert(`Weights saved: ${result.message}`);
+                              if (weightsStats) setWeightsStats(await getWeightsStats());
+                            }}
+                            className="px-3 py-1 bg-blue-700 hover:bg-blue-600 rounded text-xs transition-colors"
+                          >
+                            💾 Save Weights
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const result = await loadWeights();
+                              alert(`Weights loaded: ${result.message}`);
+                              setWeightsStats(await getWeightsStats());
+                            }}
+                            className="px-3 py-1 bg-green-700 hover:bg-green-600 rounded text-xs transition-colors"
+                          >
+                            📂 Load Weights
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -402,6 +502,43 @@ export default function Home() {
                           <div className="text-slate-500">Max Steps</div>
                           <div className="text-white font-mono">{simulation.settings.max_steps}</div>
                         </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Learning Stats */}
+                  {simulation.learning_stats && (
+                    <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
+                      <div className="text-xs text-slate-400 mb-2 font-semibold">🧠 NEUROPLASTICITY</div>
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <div className="text-slate-500">Connections Strengthened</div>
+                          <div className="text-green-400 font-mono">+{simulation.learning_stats.connections_strengthened}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-500">Total Weight Change</div>
+                          <div className="text-blue-400 font-mono">+{simulation.learning_stats.total_weight_change?.toFixed(4) || 0}</div>
+                        </div>
+                        {simulation.learning_stats.consolidation_ran && (
+                          <>
+                            <div>
+                              <div className="text-slate-500">Consolidation</div>
+                              <div className="text-purple-400 font-mono">✓ Ran</div>
+                            </div>
+                            {simulation.learning_stats.consolidation && (
+                              <>
+                                <div>
+                                  <div className="text-slate-500">Strengthened</div>
+                                  <div className="text-green-400 font-mono">+{simulation.learning_stats.consolidation.strengthened}</div>
+                                </div>
+                                <div>
+                                  <div className="text-slate-500">Pruned</div>
+                                  <div className="text-red-400 font-mono">-{simulation.learning_stats.consolidation.pruned}</div>
+                                </div>
+                              </>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
                   )}

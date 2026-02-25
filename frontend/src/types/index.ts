@@ -16,6 +16,22 @@ export interface QueryRequest {
   decay_per_hop?: number;
   propagation_threshold?: number;
   max_steps?: number;
+  propagation_config?: PropagationConfigRequest;
+  plasticity_config?: PlasticityConfigRequest;
+  enable_plasticity?: boolean;
+}
+
+export interface PropagationConfigRequest {
+  hop_decay_enabled?: boolean;
+  hop_decay_factor?: number;
+  hard_cap_multiplier?: number;
+}
+
+export interface PlasticityConfigRequest {
+  learning_rate?: number;
+  consolidation_enabled?: boolean;
+  min_weight?: number;
+  max_weight?: number;
 }
 
 export interface SimulationStep {
@@ -69,6 +85,18 @@ export interface SimulationResponse {
     decay_per_hop: number;
     propagation_threshold: number;
     max_steps: number;
+  };
+  learning_stats?: LearningStats;
+}
+
+export interface LearningStats {
+  connections_strengthened: number;
+  connections_weakened: number;
+  total_weight_change: number;
+  consolidation_ran?: boolean;
+  consolidation?: {
+    strengthened: number;
+    pruned: number;
   };
 }
 

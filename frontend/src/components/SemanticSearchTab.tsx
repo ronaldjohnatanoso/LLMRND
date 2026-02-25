@@ -29,8 +29,7 @@ export default function SemanticSearchTab() {
         query_text: searchQuery,
         top_k: k,
         propagation_depth: 0,
-        min_similarity_threshold: minSimilarity,
-        candidate_multiplier: 1,
+        activation_threshold: minSimilarity,
         decay_per_hop: 0.7,
       });
       setResults(result);
