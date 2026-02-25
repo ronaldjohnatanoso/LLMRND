@@ -542,8 +542,9 @@ class CognitiveMemory:
                 )
 
                 # Calculate activation with decay
+                # Note: hop is the parent's hop level, so propagation goes to hop+1
                 base_similarity = node.similarity_to_query if node.similarity_to_query > 0 else node.activation
-                decay_factor = decay_per_hop ** hop
+                decay_factor = decay_per_hop ** (hop + 1)  # Signal decays as it propagates TO the next layer
                 activation_delta = base_similarity * weight * role_boost * decay_factor
 
                 # Update activation
