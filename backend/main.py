@@ -78,6 +78,18 @@ class AddNodesRequest(BaseModel):
     texts: List[str]
     role: Optional[str] = "FACT"
 
+class PropagationConfigRequest(BaseModel):
+    hop_decay_enabled: bool = True
+    hop_decay_factor: float = 0.5
+    hard_cap_multiplier: float = 2.0
+    # Add more config options as needed
+
+class PlasticityConfigRequest(BaseModel):
+    learning_rate: float = 0.02
+    consolidation_enabled: bool = True
+    min_weight: float = 0.05
+    max_weight: float = 1.0
+
 class QueryRequest(BaseModel):
     query_text: str
     top_k: int = 10
@@ -86,6 +98,9 @@ class QueryRequest(BaseModel):
     decay_per_hop: float = 0.7
     propagation_threshold: float = 0.6
     max_steps: int = 100
+    propagation_config: Optional[PropagationConfigRequest] = None
+    plasticity_config: Optional[PlasticityConfigRequest] = None
+    enable_plasticity: bool = True
 
 class NodeResponse(BaseModel):
     id: str
@@ -102,6 +117,7 @@ class SimulationResponse(BaseModel):
     total_steps: int
     final_states: List[dict]
     settings: dict
+    learning_stats: Optional[dict] = None
 
 @app.get("/")
 async def root():
@@ -203,6 +219,28 @@ async def query_simulation(request: QueryRequest):
         print(f"max_steps from request: {request.max_steps}")
         print(f"top_k: {request.top_k}")
         print(f"propagation_depth: {request.propagation_depth}")
+        print(f"enable_plasticity: {request.enable_plasticity}")
+
+        # Build propagation config if provided
+        propagation_config = None
+        if request.propagation_config:
+            from cog_memory.propagation_config import PropagationConfig
+            propagation_config = PropagationConfig(
+                hop_decay_enabled=request.propagation_config.hop_decay_enabled,
+                hop_decay_factor=request.propagation_config.hop_decay_factor,
+                hard_cap_multiplier=request.propagation_config.hard_cap_multiplier,
+            )
+
+        # Build plasticity config if provided
+        plasticity_config = None
+        if request.plasticity_config:
+            from cog_memory.plasticity_config import PlasticityConfig
+            plasticity_config = PlasticityConfig(
+                learning_rate=request.plasticity_config.learning_rate,
+                consolidation_enabled=request.plasticity_config.consolidation_enabled,
+                min_weight=request.plasticity_config.min_weight,
+                max_weight=request.plasticity_config.max_weight,
+            )
 
         result = memory.query_simulation(
             query_text=request.query_text,
@@ -212,12 +250,16 @@ async def query_simulation(request: QueryRequest):
             decay_per_hop=request.decay_per_hop,
             propagation_threshold=request.propagation_threshold,
             max_steps=request.max_steps,
+            propagation_config=propagation_config,
+            enable_plasticity=request.enable_plasticity,
         )
 
         print(f"=== RESULT ===")
         print(f"total_steps: {result['total_steps']}")
         print(f"timeline length: {len(result['timeline'])}")
         print(f"settings.max_steps: {result['settings']['max_steps']}")
+        if result.get('learning_stats'):
+            print(f"connections_strengthened: {result['learning_stats'].get('connections_strengthened', 0)}")
         print(f"========================")
 
         return result
@@ -267,6 +309,55 @@ async def clear_memory():
         memory.store.table = memory.store._get_or_create_table()
 
         return {"message": "Memory cleared successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class WeightsRequest(BaseModel):
+    filepath: Optional[str] = "./data/learned_weights.json"
+
+@app.post("/weights/save")
+async def save_weights(request: WeightsRequest):
+    """Save learned connection weights to disk."""
+    if not memory:
+        raise HTTPException(status_code=503, detail="Memory not initialized")
+
+    try:
+        memory.save_learned_weights(request.filepath)
+        return {"message": "Weights saved successfully", "filepath": request.filepath}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/weights/load")
+async def load_weights(request: WeightsRequest):
+    """Load learned connection weights from disk."""
+    if not memory:
+        raise HTTPException(status_code=503, detail="Memory not initialized")
+
+    try:
+        loaded = memory.load_learned_weights(request.filepath)
+        if loaded:
+            return {"message": "Weights loaded successfully", "filepath": request.filepath}
+        else:
+            return {"message": "No weights file found, using defaults", "filepath": request.filepath}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/weights/stats")
+async def get_weights_stats():
+    """Get statistics about learned weights."""
+    if not memory:
+        raise HTTPException(status_code=503, detail="Memory not initialized")
+
+    try:
+        return {
+            "query_count": memory.neuroplasticity.query_count,
+            "last_consolidation_query": memory.neuroplasticity.last_consolidation_query,
+            "total_edges": sum(len(n.neighbors) for n in memory.graph.nodes.values()),
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
