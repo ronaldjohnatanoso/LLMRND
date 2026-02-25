@@ -18,6 +18,9 @@ from cog_memory.embedding_manager import EmbeddingManager
 from cog_memory.llm_extractor import LLMExtractor, Provider
 from cog_memory.lance_store import LanceStore
 from cog_memory.node import Node, Role
+from cog_memory.propagation_config import PropagationConfig
+from cog_memory.plasticity_config import PlasticityConfig
+from cog_memory.neuroplasticity import NeuroplasticityManager
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -71,6 +74,11 @@ class CognitiveMemory:
         )
         self.deduplication = DeduplicationEngine()
         self.decay = DecayModule()
+
+        # Neuroplasticity setup
+        self.plasticity_config = PlasticityConfig()
+        self.neuroplasticity = NeuroplasticityManager(self.graph, self.plasticity_config)
+        self.propagation_config = PropagationConfig()
 
         # Load existing nodes into graph
         self._load_graph_from_store()
@@ -337,6 +345,8 @@ class CognitiveMemory:
         decay_per_hop: float = 0.7,
         propagation_threshold: float | None = None,
         max_steps: int = 100,
+        propagation_config: PropagationConfig | None = None,
+        enable_plasticity: bool = True,
     ) -> dict:
         """Query with step-by-step propagation states for animation.
 
@@ -350,9 +360,15 @@ class CognitiveMemory:
             decay_per_hop: Retention rate per hop
             propagation_threshold: Override minimum activation for a node to propagate to neighbors
             max_steps: Maximum number of steps to generate (hard limit to prevent ballooning)
+            propagation_config: Optional custom propagation config
+            enable_plasticity: Whether to apply Hebbian learning after query
         """
         print(f"[query_simulation] Called with max_steps={max_steps}")
         from collections import deque
+
+        # Use custom config if provided, else use default
+        if propagation_config is None:
+            propagation_config = self.propagation_config
 
         # Store original thresholds for restoration
         original_activation_threshold = self.graph.activation_threshold
@@ -370,6 +386,9 @@ class CognitiveMemory:
 
         # Generate query embedding
         query_embedding = self.embedding_manager.generate_embedding(query_text)
+
+        # Track propagation for neuroplasticity
+        propagation_history = []
 
         # Timeline stores each state for animation
         timeline = []
@@ -526,8 +545,12 @@ class CognitiveMemory:
 
             # Process each neighbor (sorted by weight to process strongest connections first)
             neighbors_processed = 0
+
+            # Get tiered propagation limit for this node
+            propagation_limit = propagation_config.get_limit(node, hop)
+
             sorted_neighbors = sorted(node.neighbors.items(), key=lambda x: x[1], reverse=True)
-            for neighbor_id, weight in sorted_neighbors:
+            for neighbor_id, weight in sorted_neighbors[:propagation_limit]:
                 edge = (node_id, neighbor_id)
                 if edge in visited_edges:
                     continue
@@ -550,6 +573,18 @@ class CognitiveMemory:
                 # Update activation
                 old_activation = neighbor.activation
                 neighbor.update_activation(activation_delta)
+
+                # Track connection usage for neuroplasticity
+                node.use_connection(neighbor_id)
+
+                # Track propagation for learning
+                propagation_history.append({
+                    "parent_id": node_id,
+                    "child_id": neighbor_id,
+                    "delta": activation_delta,
+                    "hop": hop,
+                    "weight": weight,
+                })
 
                 print(f"[PROPAGATION] node.role={node.role.value} -> neighbor.role={neighbor.role.value}, role_boost={role_boost}")
                 print(f"[PROPAGATION] base_similarity={base_similarity:.3f}, weight={weight:.3f}, decay_factor={decay_factor:.3f}")
@@ -651,6 +686,12 @@ class CognitiveMemory:
             },
         }
         print(f"[query_simulation] Returning total_steps={result['total_steps']}, timeline_len={len(result['timeline'])}")
+
+        # Apply neuroplasticity (Hebbian learning)
+        learning_stats = None
+        if enable_plasticity:
+            learning_stats = self.neuroplasticity.learn_from_query(propagation_history)
+            result["learning_stats"] = learning_stats
 
         # Restore original thresholds
         self.graph.activation_threshold = original_activation_threshold
@@ -802,6 +843,25 @@ class CognitiveMemory:
                 len(n.neighbors) for n in self.graph.nodes.values()
             ),
         }
+
+    def save_learned_weights(self, filepath: str = "./data/learned_weights.json") -> None:
+        """Persist learned connection weights to disk.
+
+        Args:
+            filepath: Path to save weights JSON file
+        """
+        self.neuroplasticity.save_weights(filepath)
+
+    def load_learned_weights(self, filepath: str = "./data/learned_weights.json") -> bool:
+        """Load learned connection weights from disk.
+
+        Args:
+            filepath: Path to weights JSON file
+
+        Returns:
+            True if weights were loaded, False if file doesn't exist
+        """
+        return self.neuroplasticity.load_weights(filepath)
 
     def _create_semantic_edges_batch(
         self,

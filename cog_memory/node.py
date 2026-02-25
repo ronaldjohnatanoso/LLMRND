@@ -5,6 +5,7 @@ A Node represents a commitment extracted from text with a specific meta-role.
 
 from __future__ import annotations
 
+import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
@@ -43,6 +44,8 @@ class Node:
         activation: Current activation level (0.0 to 1.0) - temporary, reset each query
         similarity_to_query: Original similarity to the query that matched this node - NEVER changes
         neighbors: Dictionary mapping neighbor_id -> edge weight
+        connection_usage: Dictionary mapping neighbor_id -> usage count (for neuroplasticity)
+        connection_last_used: Dictionary mapping neighbor_id -> timestamp of last use
         metadata: Optional metadata (timestamps, evidence, etc.)
         embedding: Optional pre-computed embedding vector
     """
@@ -54,6 +57,8 @@ class Node:
     activation: float = 0.0
     similarity_to_query: float = 0.0
     neighbors: dict[str, float] = field(default_factory=dict)
+    connection_usage: dict[str, int] = field(default_factory=dict)
+    connection_last_used: dict[str, float] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
     embedding: list[float] | None = None
 
@@ -73,6 +78,31 @@ class Node:
             neighbor_id: ID of the neighbor to remove
         """
         self.neighbors.pop(neighbor_id, None)
+        self.connection_usage.pop(neighbor_id, None)
+        self.connection_last_used.pop(neighbor_id, None)
+
+    def use_connection(self, neighbor_id: str) -> None:
+        """Track that this connection was used during propagation.
+
+        Args:
+            neighbor_id: ID of the neighbor that was propagated to
+        """
+        self.connection_usage[neighbor_id] = self.connection_usage.get(neighbor_id, 0) + 1
+        self.connection_last_used[neighbor_id] = time.time()
+
+    def get_connection_stats(self, neighbor_id: str) -> dict[str, Any]:
+        """Get usage statistics for a connection.
+
+        Args:
+            neighbor_id: ID of the neighbor
+
+        Returns:
+            Dictionary with usage_count and last_used timestamp
+        """
+        return {
+            "usage_count": self.connection_usage.get(neighbor_id, 0),
+            "last_used": self.connection_last_used.get(neighbor_id),
+        }
 
     def update_activation(self, delta: float) -> None:
         """Update activation level with clamping to [0, 1].
@@ -100,6 +130,8 @@ class Node:
             "activation": self.activation,
             "similarity_to_query": self.similarity_to_query,
             "neighbors": self.neighbors,
+            "connection_usage": self.connection_usage,
+            "connection_last_used": self.connection_last_used,
             "metadata": self.metadata,
         }
 
@@ -113,7 +145,7 @@ class Node:
         Returns:
             A new Node instance
         """
-        return cls(
+        node = cls(
             id=data["id"],
             text=data["text"],
             role=Role(data["role"]),
@@ -123,6 +155,10 @@ class Node:
             neighbors=data.get("neighbors", {}),
             metadata=data.get("metadata", {}),
         )
+        # Load usage tracking if present (for backward compatibility)
+        node.connection_usage = data.get("connection_usage", {})
+        node.connection_last_used = data.get("connection_last_used", {})
+        return node
 
     def __repr__(self) -> str:
         return f"Node(id={self.id[:8]}..., role={self.role.value}, activation={self.activation:.2f})"
