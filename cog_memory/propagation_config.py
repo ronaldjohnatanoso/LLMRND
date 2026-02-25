@@ -30,13 +30,14 @@ class PropagationConfig:
     """
 
     # Tier thresholds (quality_score -> max_neighbors)
+    # IMPORTANT: Must be ordered from highest to lowest threshold!
     tiers: dict[str, tuple[float, int]] = field(default_factory=lambda: {
         "excellent": (0.90, 15),  # 90%+ strength → 15 neighbors
         "good": (0.75, 10),       # 75%+ strength → 10 neighbors
-        "moderate": (0.60, 7),     # 60%+ strength → 7 neighbors
-        "weak": (0.45, 5),         # 45%+ strength → 5 neighbors
-        "poor": (0.30, 3),         # 30%+ strength → 3 neighbors
-        "noise": (0.0, 1),         # Below 30% → 1 neighbor
+        "moderate": (0.60, 7),    # 60%+ strength → 7 neighbors
+        "weak": (0.45, 5),        # 45%+ strength → 5 neighbors
+        "poor": (0.30, 3),        # 30%+ strength → 3 neighbors
+        "noise": (0.0, 1),        # Below 30% → 1 neighbor
     })
 
     # Role modifiers (multipliers for base limits)
@@ -80,12 +81,13 @@ class PropagationConfig:
         # Quality score: hybrid of peak and average
         quality_score = (max_weight * self.peak_weight) + (avg_weight * self.avg_weight)
 
-        # Find appropriate tier
+        # Find appropriate tier (highest threshold that matches)
         base_limit = 1
-        for tier_name, (threshold, limit) in reversed(self.tiers.items()):
+        for tier_name, (threshold, limit) in self.tiers.items():
             if quality_score >= threshold:
                 base_limit = limit
-                break
+                break  # Found the highest matching tier
+        # If no tier matched (shouldn't happen), base_limit stays at 1
 
         # Apply role modifier
         role_mod = self.role_modifiers.get(node.role, 1.0)
